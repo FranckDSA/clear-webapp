@@ -855,6 +855,187 @@ export const CLEAR_ORACLE_ABI = [
     }
   ] as const
 
+// Curve StableSwap pool ABI (shared functions for both base and meta pools)
+export const CURVE_POOL_ABI = [
+  {
+    name: 'exchange',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'i', type: 'int128' },
+      { name: 'j', type: 'int128' },
+      { name: 'dx', type: 'uint256' },
+      { name: 'min_dy', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'exchange_underlying',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'i', type: 'int128' },
+      { name: 'j', type: 'int128' },
+      { name: 'dx', type: 'uint256' },
+      { name: 'min_dy', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'get_dy',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'i', type: 'int128' },
+      { name: 'j', type: 'int128' },
+      { name: 'dx', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'get_dy_underlying',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'i', type: 'int128' },
+      { name: 'j', type: 'int128' },
+      { name: 'dx', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'remove_liquidity_one_coin',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token_amount', type: 'uint256' },
+      { name: 'i', type: 'int128' },
+      { name: 'min_amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'calc_withdraw_one_coin',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'token_amount', type: 'uint256' },
+      { name: 'i', type: 'int128' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'lp_token',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'token',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'balances',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'i', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'get_virtual_price',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'fee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'A',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const
+
+// 2-coin Curve pool add_liquidity (for meta pools)
+export const CURVE_POOL_2COIN_ABI = [
+  {
+    name: 'add_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amounts', type: 'uint256[2]' },
+      { name: 'min_mint_amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'calc_token_amount',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amounts', type: 'uint256[2]' },
+      { name: 'is_deposit', type: 'bool' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'remove_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'min_amounts', type: 'uint256[2]' },
+    ],
+    outputs: [{ name: '', type: 'uint256[2]' }],
+  },
+] as const
+
+// 5-coin Curve pool add_liquidity (for base pool)
+export const CURVE_POOL_5COIN_ABI = [
+  {
+    name: 'add_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amounts', type: 'uint256[5]' },
+      { name: 'min_mint_amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'calc_token_amount',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amounts', type: 'uint256[5]' },
+      { name: 'is_deposit', type: 'bool' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'remove_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'min_amounts', type: 'uint256[5]' },
+    ],
+    outputs: [{ name: '', type: 'uint256[5]' }],
+  },
+] as const
+
 export const CLEAR_FACTORY_ABI = [
   {
     inputs: [],

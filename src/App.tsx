@@ -4,8 +4,9 @@ import { VaultDetails } from './components/VaultDetails'
 import { Swap } from './components/Swap'
 import { OracleUpdate } from './components/OracleUpdate'
 import { Stats } from './components/Stats'
+import { CurvePools } from './components/CurvePools'
 
-type Tab = 'home' | 'vault' | 'swap' | 'oracle'
+type Tab = 'home' | 'vault' | 'swap' | 'pools' | 'oracle'
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home')
@@ -35,6 +36,16 @@ export function App() {
       icon: (
         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      ),
+    },
+    {
+      id: 'pools',
+      label: 'Pools',
+      icon: (
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7h16M4 12h16M4 17h7" />
+          <circle cx="18" cy="17" r="3" strokeWidth={1.5} />
         </svg>
       ),
     },
@@ -119,6 +130,7 @@ export function App() {
         {activeTab === 'home' && <Stats />}
         {activeTab === 'vault' && <VaultDetails />}
         {activeTab === 'swap' && <Swap />}
+        {activeTab === 'pools' && <CurvePools />}
         {activeTab === 'oracle' && <OracleUpdate />}
       </main>
 

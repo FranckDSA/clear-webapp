@@ -171,6 +171,106 @@ export const CLEAR_ROUTE_QUERY = gql`
   }
 `
 
+export interface CurvePoolCoinData {
+  index: number
+  address: string
+  balance: string
+  name: string
+  symbol: string
+  decimals: number
+  underlying?: {
+    address: string
+    name: string
+    symbol: string
+  }
+}
+
+export interface CurvePoolSwapData {
+  buyer: string
+  soldId: number
+  tokensSold: string
+  boughtId: number
+  tokensBought: string
+  isUnderlying: boolean
+  timestamp: string
+}
+
+export interface CurvePoolData {
+  id: string
+  name: string
+  symbol: string
+  decimals: number
+  address: string
+  poolType: string
+  fee: string
+  a: string
+  virtualPrice: string
+  lpTotalSupply: string
+  vault: {
+    address: string
+  }
+  token?: {
+    address: string
+    symbol: string
+    iou?: {
+      address: string
+      symbol: string
+    }
+  }
+  coins: CurvePoolCoinData[]
+  swaps: CurvePoolSwapData[]
+}
+
+export const GET_CURVE_POOLS = gql`
+  query GetCurvePools {
+    curvePools(orderBy: poolType_DESC) {
+      id
+      name
+      symbol
+      decimals
+      address
+      poolType
+      fee
+      a
+      virtualPrice
+      lpTotalSupply
+      vault {
+        address
+      }
+      token {
+        address
+        symbol
+        iou {
+          address
+          symbol
+        }
+      }
+      coins(orderBy: index_ASC) {
+        index
+        address
+        balance
+        name
+        symbol
+        decimals
+        underlying {
+          address
+          name
+          symbol
+        }
+      }
+      swaps(orderBy: timestamp_DESC, limit: 20) {
+        buyer
+        soldId
+        tokensSold
+        boughtId
+        tokensBought
+        isUnderlying
+        timestamp
+      }
+    }
+  }
+`
+
 // Format a 18-decimal BigInt string as a USD amount
 export function formatUSD(value: string | bigint, decimals = 18): string {
   try {
