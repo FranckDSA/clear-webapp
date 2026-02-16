@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
+import { useQuery } from '@tanstack/react-query'
 import {
   ADDRESSES,
   TOKENS,
   ERC20_ABI,
   CLEAR_SWAP_ABI,
 } from '../config/contracts'
+import { graphqlClient, CLEAR_ROUTE_QUERY, ClearRouteResult } from '../lib/graphql'
 
 const TOKEN_LIST = Object.values(TOKENS)
 
@@ -22,7 +24,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export function Swap() {
   const { address: userAddress } = useAccount()
 
-  const [vaultAddress, setVaultAddress] = useState<`0x${string}`>(ADDRESSES.defaultVault)
+  const [fallbackVaultAddress, setFallbackVaultAddress] = useState<`0x${string}`>(ADDRESSES.defaultVault)
   const [fromToken, setFromToken] = useState(TOKEN_LIST[1]) // USDC
   const [toToken, setToToken] = useState(TOKEN_LIST[4]) // USDT
   const [amountIn, setAmountIn] = useState('')
@@ -34,24 +36,55 @@ export function Swap() {
   const debouncedAmountIn = useDebounce(amountIn, 400)
 
   const parsedAmountIn =
-    debouncedAmountIn && !isNaN(Number(debouncedAmountIn))
+    debouncedAmountIn && !isNaN(Number(debouncedAmountIn)) && Number(debouncedAmountIn) > 0
       ? parseUnits(debouncedAmountIn, fromToken.decimals)
       : 0n
 
-  // Preview swap
+  const routeEnabled = parsedAmountIn > 0n && fromToken.address !== toToken.address && !!userAddress
+
+  // ─── Primary: GraphQL clearRoute ────────────────────────────────────────────
   const {
-    data: preview,
+    data: routeData,
+    isLoading: routeLoading,
+    error: routeError,
+    isFetching: routeFetching,
+  } = useQuery({
+    queryKey: ['clearRoute', userAddress, fromToken.address, toToken.address, parsedAmountIn.toString(), receiveIOU],
+    queryFn: async () => {
+      const res = await graphqlClient.request<{ clearRoute: ClearRouteResult }>(CLEAR_ROUTE_QUERY, {
+        receiver: userAddress,
+        fromToken: fromToken.address,
+        toToken: toToken.address,
+        amountIn: parsedAmountIn.toString(),
+        receiveIOU,
+      })
+      return res.clearRoute
+    },
+    enabled: routeEnabled,
+    retry: 1,
+    retryDelay: 500,
+    staleTime: 10_000,
+  })
+
+  // API is considered down when query was attempted and errored
+  const graphqlDown = routeEnabled && !!routeError && !routeFetching
+
+  // ─── Fallback: on-chain previewSwap ─────────────────────────────────────────
+  const {
+    data: previewFallback,
     isLoading: isPreviewLoading,
     error: previewError,
   } = useReadContract({
     address: ADDRESSES.clearSwap,
     abi: CLEAR_SWAP_ABI,
     functionName: 'previewSwap',
-    args: [vaultAddress, fromToken.address, toToken.address, parsedAmountIn, receiveIOU],
-    query: { enabled: parsedAmountIn > 0n && fromToken.address !== toToken.address },
+    args: [fallbackVaultAddress, fromToken.address, toToken.address, parsedAmountIn, receiveIOU],
+    query: {
+      // Only run when GraphQL is confirmed down or wallet not connected
+      enabled: parsedAmountIn > 0n && fromToken.address !== toToken.address && (!userAddress || graphqlDown),
+    },
   })
 
-  // Depeg thresholds
   const { data: depegThreshold } = useReadContract({
     address: ADDRESSES.clearSwap,
     abi: CLEAR_SWAP_ABI,
@@ -67,12 +100,17 @@ export function Swap() {
     query: { enabled: !!userAddress },
   })
 
-  // Current allowance
+  // Resolve the swap contract and vault to use
+  const resolvedSwapContract = (!graphqlDown && routeData?.swapContract
+    ? routeData.swapContract
+    : ADDRESSES.clearSwap) as `0x${string}`
+
+  // Current allowance against the resolved swap contract
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: fromToken.address,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: [userAddress!, ADDRESSES.clearSwap],
+    args: [userAddress!, resolvedSwapContract],
     query: { enabled: !!userAddress },
   })
 
@@ -82,26 +120,50 @@ export function Swap() {
   const { isLoading: isApprovalConfirming, isSuccess: isApprovalSuccess } = useWaitForTransactionReceipt({
     hash: approvalHash,
   })
-
   const { isLoading: isSwapConfirming, isSuccess: isSwapSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
   })
 
   useEffect(() => {
-    if (isApprovalSuccess) {
-      refetchAllowance()
-    }
+    if (isApprovalSuccess) refetchAllowance()
   }, [isApprovalSuccess, refetchAllowance])
 
-  const needsApproval = allowance !== undefined && parsedAmountIn > 0n && allowance < parsedAmountIn
+  // ─── Derived preview values ──────────────────────────────────────────────────
+  // GraphQL route takes priority when healthy
+  const usingGraphQL = !graphqlDown && !!routeData
+  const routeAvailable = usingGraphQL ? routeData!.available : true
 
-  const amountOut = preview?.[0] ?? 0n
-  const iousOut = preview?.[1] ?? 0n
+  const amountOut: bigint = usingGraphQL && routeData!.amountOut
+    ? BigInt(routeData!.amountOut)
+    : (previewFallback?.[0] ?? 0n)
+
+  const iousOut: bigint = usingGraphQL && routeData!.iouAmountOut
+    ? BigInt(routeData!.iouAmountOut)
+    : (previewFallback?.[1] ?? 0n)
 
   const minAmountOut = amountOut > 0n
     ? amountOut - (amountOut * BigInt(Math.floor(Number(slippage) * 100))) / 10000n
     : 0n
 
+  const isPreviewCalculating = usingGraphQL ? routeLoading || routeFetching : isPreviewLoading
+
+  const needsApproval = allowance !== undefined && parsedAmountIn > 0n && allowance < parsedAmountIn
+
+  // Effective error to show in UI
+  const effectiveError: string | null = (() => {
+    if (usingGraphQL && routeData && !routeData.available) {
+      return routeData.unavaibilityReasons.join(' · ')
+    }
+    if (graphqlDown && previewError) {
+      const msg = previewError.message
+      if (msg.includes('AssetIsNotDepeg')) return 'Asset is not depegged — swap unavailable for this direction'
+      if (msg.includes('OutAssetIsDepeg')) return 'Output asset is currently depegged'
+      return msg
+    }
+    return null
+  })()
+
+  // ─── Handlers ────────────────────────────────────────────────────────────────
   const handleSwapTokens = () => {
     const tmp = fromToken
     setFromToken(toToken)
@@ -115,20 +177,25 @@ export function Swap() {
       address: fromToken.address,
       abi: ERC20_ABI,
       functionName: 'approve',
-      args: [ADDRESSES.clearSwap, maxUint256],
+      args: [resolvedSwapContract, maxUint256],
     })
     setApprovalHash(hash)
   }
 
   const handleSwap = async () => {
-    if (!userAddress || !preview) return
+    if (!userAddress) return
+
+    const vaultAddr = (!graphqlDown && routeData?.vault
+      ? routeData.vault
+      : fallbackVaultAddress) as `0x${string}`
+
     const hash = await writeSwap({
-      address: ADDRESSES.clearSwap,
+      address: resolvedSwapContract,
       abi: CLEAR_SWAP_ABI,
       functionName: 'swap',
       args: [
         userAddress,
-        vaultAddress,
+        vaultAddr,
         fromToken.address,
         toToken.address,
         parsedAmountIn,
@@ -140,29 +207,43 @@ export function Swap() {
     setAmountIn('')
   }
 
+  const canSwap = parsedAmountIn > 0n
+    && fromToken.address !== toToken.address
+    && !effectiveError
+    && !isSwapPending
+    && !isSwapConfirming
+    && (amountOut > 0n)
+
   return (
     <div className="max-w-lg mx-auto space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-white">Swap</h2>
-        <p className="text-slate-400 text-sm mt-1">
-          Trade stablecoins 1:1 via Clear Protocol
-          {depegThreshold !== undefined && (
-            <span className="ml-2 text-blue-400">
-              · Depeg threshold: {(Number(depegThreshold) / 100).toFixed(0)} bps
-            </span>
-          )}
-        </p>
-      </div>
-
-      {/* Vault selector */}
-      <div>
-        <label className="block text-xs text-slate-400 mb-1 uppercase tracking-wider">Vault</label>
-        <input
-          type="text"
-          value={vaultAddress}
-          onChange={(e) => setVaultAddress(e.target.value as `0x${string}`)}
-          className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
-        />
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Swap</h2>
+            <p className="text-slate-400 text-sm mt-1">
+              Trade stablecoins 1:1 via Clear Protocol
+              {depegThreshold !== undefined && (
+                <span className="ml-2 text-blue-400">
+                  · Depeg threshold: {(Number(depegThreshold) / 100).toFixed(0)} bps
+                </span>
+              )}
+            </p>
+          </div>
+          {/* Data source badge */}
+          <div className="flex-shrink-0 mt-1">
+            {graphqlDown ? (
+              <span className="inline-flex items-center gap-1.5 text-xs bg-amber-900/30 text-amber-400 border border-amber-500/30 rounded-full px-2.5 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                On-chain fallback
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-xs bg-emerald-900/20 text-emerald-400 border border-emerald-500/20 rounded-full px-2.5 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Indexer
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Swap Card */}
@@ -174,9 +255,7 @@ export function Swap() {
             {userBalance !== undefined && (
               <button
                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                onClick={() =>
-                  setAmountIn(formatUnits(userBalance, fromToken.decimals))
-                }
+                onClick={() => setAmountIn(formatUnits(userBalance, fromToken.decimals))}
               >
                 Max: {Number(formatUnits(userBalance, fromToken.decimals)).toLocaleString('en-US', { maximumFractionDigits: 4 })}
               </button>
@@ -201,9 +280,7 @@ export function Swap() {
               className="bg-slate-700 text-white rounded-lg px-3 py-2 font-medium focus:outline-none cursor-pointer"
             >
               {TOKEN_LIST.filter((t) => t.symbol !== toToken.symbol).map((t) => (
-                <option key={t.symbol} value={t.symbol}>
-                  {t.symbol}
-                </option>
+                <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
               ))}
             </select>
           </div>
@@ -233,7 +310,7 @@ export function Swap() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 text-2xl font-bold text-white">
-              {isPreviewLoading ? (
+              {isPreviewCalculating && parsedAmountIn > 0n ? (
                 <span className="text-slate-500 text-lg">Calculating...</span>
               ) : amountOut > 0n ? (
                 Number(formatUnits(amountOut, toToken.decimals)).toLocaleString('en-US', {
@@ -254,24 +331,16 @@ export function Swap() {
               className="bg-slate-700 text-white rounded-lg px-3 py-2 font-medium focus:outline-none cursor-pointer"
             >
               {TOKEN_LIST.filter((t) => t.symbol !== fromToken.symbol).map((t) => (
-                <option key={t.symbol} value={t.symbol}>
-                  {t.symbol}
-                </option>
+                <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* Preview error */}
-        {previewError && parsedAmountIn > 0n && (
+        {/* Error */}
+        {effectiveError && parsedAmountIn > 0n && (
           <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 text-red-400 text-xs">
-            {previewError.message.includes('AssetIsNotDepeg')
-              ? 'Asset is not depegged — swap unavailable for this direction'
-              : previewError.message.includes('OutAssetIsDepeg')
-              ? 'Output asset is currently depegged'
-              : previewError.message.length > 100
-              ? previewError.message.slice(0, 100) + '...'
-              : previewError.message}
+            {effectiveError}
           </div>
         )}
 
@@ -308,7 +377,7 @@ export function Swap() {
         </div>
 
         {/* Rate info */}
-        {amountOut > 0n && parsedAmountIn > 0n && (
+        {amountOut > 0n && parsedAmountIn > 0n && routeAvailable && (
           <div className="bg-slate-900/50 rounded-lg px-3 py-2 text-xs text-slate-400 space-y-1">
             <div className="flex justify-between">
               <span>Rate</span>
@@ -325,9 +394,32 @@ export function Swap() {
                 {Number(formatUnits(minAmountOut, toToken.decimals)).toFixed(6)} {toToken.symbol}
               </span>
             </div>
+            {usingGraphQL && routeData?.vault && (
+              <div className="flex justify-between">
+                <span>Vault</span>
+                <span className="text-white font-mono text-xs">
+                  {routeData.vault.slice(0, 6)}…{routeData.vault.slice(-4)}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Fallback vault input — only shown when GraphQL is down */}
+      {graphqlDown && (
+        <div>
+          <label className="block text-xs text-slate-400 mb-1 uppercase tracking-wider">
+            Vault <span className="text-amber-400">(on-chain fallback)</span>
+          </label>
+          <input
+            type="text"
+            value={fallbackVaultAddress}
+            onChange={(e) => setFallbackVaultAddress(e.target.value as `0x${string}`)}
+            className="w-full bg-slate-800 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+          />
+        </div>
+      )}
 
       {/* Action buttons */}
       {!userAddress ? (
@@ -345,14 +437,7 @@ export function Swap() {
       ) : (
         <button
           onClick={handleSwap}
-          disabled={
-            !parsedAmountIn ||
-            parsedAmountIn === 0n ||
-            !!previewError ||
-            isSwapPending ||
-            isSwapConfirming ||
-            fromToken.address === toToken.address
-          }
+          disabled={!canSwap}
           className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors"
         >
           {isSwapPending || isSwapConfirming ? 'Swapping...' : 'Swap'}

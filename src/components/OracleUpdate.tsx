@@ -30,12 +30,8 @@ function TokenOracleRow({
   const price = oracleData?.[0]
   const redemptionPrice = oracleData?.[1]
 
-  const depegBps =
-    price !== undefined && redemptionPrice !== undefined && price > 0n
-      ? ((Number(price) - Number(redemptionPrice)) * 10000) / Number(price)
-      : 0
-
-  const isDepegged = depegBps > 50 // more than 50 bps difference
+  const isDepegged =
+    price !== undefined && Number(price) / 10 ** ORACLE_DECIMALS < 0.9995
 
   return (
     <tr className="border-t border-clear-border">
@@ -47,7 +43,7 @@ function TokenOracleRow({
           <span className="font-medium text-white">{token.symbol}</span>
         </div>
       </td>
-      <td className="px-4 py-3 text-right font-mono text-white">
+      <td className={`px-4 py-3 text-right font-mono ${isDepegged ? 'text-red-400' : 'text-white'}`}>
         {price !== undefined ? `$${formatOraclePrice(price)}` : '—'}
       </td>
       <td className="px-4 py-3 text-right font-mono text-sky-400">
@@ -62,7 +58,7 @@ function TokenOracleRow({
                 : 'bg-emerald-900/40 text-emerald-400 border border-emerald-500/30'
             }`}
           >
-            {isDepegged ? `Depegged ${depegBps.toFixed(0)} bps` : 'Pegged'}
+            {isDepegged ? 'Depegged' : 'Pegged'}
           </span>
         ) : (
           '—'
@@ -92,6 +88,8 @@ export function OracleUpdate() {
 
   const currentPrice = currentOracleData?.[0]
   const currentRedemptionPrice = currentOracleData?.[1]
+  const isCurrentDepegged =
+    currentPrice !== undefined && Number(currentPrice) / 10 ** ORACLE_DECIMALS < 0.9995
 
   const handleSetPrice = async () => {
     if (!userAddress || !newPrice) return
@@ -177,7 +175,7 @@ export function OracleUpdate() {
           <div className="bg-slate-800/60 rounded-lg p-3 text-sm">
             <div className="flex justify-between items-center">
               <span className="text-slate-400">Current oracle price</span>
-              <span className="text-white font-mono">${formatOraclePrice(currentPrice)}</span>
+              <span className={`font-mono ${isCurrentDepegged ? 'text-red-400' : 'text-white'}`}>${formatOraclePrice(currentPrice)}</span>
             </div>
             {currentRedemptionPrice !== undefined && (
               <div className="flex justify-between items-center mt-1">

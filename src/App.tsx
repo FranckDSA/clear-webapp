@@ -3,16 +3,26 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { VaultDetails } from './components/VaultDetails'
 import { Swap } from './components/Swap'
 import { OracleUpdate } from './components/OracleUpdate'
+import { Stats } from './components/Stats'
 
-type Tab = 'vault' | 'swap' | 'oracle'
+type Tab = 'home' | 'vault' | 'swap' | 'oracle'
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('vault')
+  const [activeTab, setActiveTab] = useState<Tab>('home')
 
   const tabs: { id: Tab; label: string; icon: JSX.Element }[] = [
     {
+      id: 'home',
+      label: 'Overview',
+      icon: (
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      ),
+    },
+    {
       id: 'vault',
-      label: 'Vault Details',
+      label: 'Vault',
       icon: (
         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18M9 10v10M15 10v10M5 6l7-3 7 3" />
@@ -106,6 +116,7 @@ export function App() {
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        {activeTab === 'home' && <Stats />}
         {activeTab === 'vault' && <VaultDetails />}
         {activeTab === 'swap' && <Swap />}
         {activeTab === 'oracle' && <OracleUpdate />}

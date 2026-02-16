@@ -51,6 +51,9 @@ function TokenRow({ vault, token }: { vault: `0x${string}`, token: TokenDetails 
     args: [token.addr as `0x${string}`],
   })
 
+  const isDepegged =
+    oracleData !== undefined && Number(oracleData[0]) / 1e8 < 0.9995
+
   return (
     <tr className="border-t border-clear-border hover:bg-slate-800/50 transition-colors">
       <td className="px-4 py-3">
@@ -72,7 +75,7 @@ function TokenRow({ vault, token }: { vault: `0x${string}`, token: TokenDetails 
         </span>
       </td>
       <td className="px-4 py-3 text-right">
-        <span className="text-emerald-400 font-mono">
+        <span className={`font-mono ${isDepegged ? 'text-red-400' : 'text-emerald-400'}`}>
           {oracleData !== undefined ? formatPrice(oracleData[0]) : '—'}
         </span>
       </td>
