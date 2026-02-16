@@ -171,6 +171,34 @@ export const CLEAR_ROUTE_QUERY = gql`
   }
 `
 
+export interface ClearOraclePriceUpdateData {
+  id: string
+  price: string
+  timestamp: string
+}
+
+export interface ClearOracleHistoryData {
+  asset: string
+  price: string
+  lastUpdateTimestamp: string
+  priceHistory: ClearOraclePriceUpdateData[]
+}
+
+export const GET_ORACLE_HISTORY = gql`
+  query GetOraclePriceHistory {
+    clearOracles {
+      asset
+      price
+      lastUpdateTimestamp
+      priceHistory(orderBy: [timestamp_ASC]) {
+        id
+        price
+        timestamp
+      }
+    }
+  }
+`
+
 export interface CurvePoolCoinData {
   index: number
   address: string
