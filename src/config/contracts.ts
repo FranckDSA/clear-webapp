@@ -8,6 +8,7 @@ export const ADDRESSES = {
   clearAccessManager: '0x665a87D3FE39e2B5Aa8667747E23871d124D3785' as Address,
   // The vault deployed via the deploy script
   defaultVault: '0x02912591442Beb7Fd824Df4c90006093371898EF' as Address,
+  clearRebalanceAgent: '0x1bAC1024D767d3Ee738a89A622651e2AB59dDC6C' as Address,
 } as const
 
 export const TOKENS: Record<string, { address: Address; symbol: string; decimals: number }> = {
@@ -1065,4 +1066,20 @@ export const CLEAR_FACTORY_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+] as const
+
+export const CLEAR_REBALANCE_AGENT_ABI = [
+  { inputs: [], name: 'feeBps', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'tokenBalances', outputs: [{ name: '', type: 'address[]' }, { name: '', type: 'uint256[]' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'tokensLength', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }], name: 'tokens', outputs: [{ name: 'enabled', type: 'bool' }, { name: 'decimals', type: 'uint8' }, { name: 'price', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }], name: 'whitelistedSwappers', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '_newFeeBps', type: 'uint256' }], name: 'setFeeBps', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_token', type: 'address' }, { name: '_price', type: 'uint256' }], name: 'configureToken', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_token', type: 'address' }, { name: '_amount', type: 'uint256' }], name: 'depositLiquidity', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_token', type: 'address' }, { name: '_amount', type: 'uint256' }], name: 'withdrawLiquidity', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_swapper', type: 'address' }], name: 'addSwapperToWhitelist', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_swapper', type: 'address' }], name: 'removeSwapperFromWhitelist', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: 'newOwner', type: 'address' }], name: 'transferOwnership', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const

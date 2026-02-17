@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { useReadContract, useReadContracts } from 'wagmi'
-import { formatUnits } from 'viem'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { formatUnits, parseUnits, maxUint256 } from 'viem'
 import {
   ADDRESSES,
   CLEAR_VAULT_ABI,
   CLEAR_ORACLE_ABI,
+  CLEAR_SWAP_ABI,
+  ERC20_ABI,
   TOKEN_BY_ADDRESS,
 } from '../config/contracts'
 
@@ -110,6 +112,297 @@ function TokenRow({ vault, token }: { vault: `0x${string}`, token: TokenDetails 
         )}
       </td>
     </tr>
+  )
+}
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: TokenDetails[] }) {
+  const { address: userAddress } = useAccount()
+
+  const redeemableTokens = tokens.filter(
+    (t) => t.iou && t.iou !== ZERO_ADDRESS
+  )
+
+  const [selectedToken, setSelectedToken] = useState<TokenDetails | null>(
+    redeemableTokens[0] ?? null
+  )
+  const [amount, setAmount] = useState('')
+  const [approvalHash, setApprovalHash] = useState<`0x${string}` | undefined>()
+  const [redeemHash, setRedeemHash] = useState<`0x${string}` | undefined>()
+  const [txError, setTxError] = useState<string | null>(null)
+
+  const tokenInfo = selectedToken
+    ? TOKEN_BY_ADDRESS[selectedToken.addr.toLowerCase()]
+    : null
+  const symbol = tokenInfo?.symbol ?? selectedToken?.addr.slice(0, 8) + '...'
+  const decimals = selectedToken?.decimals ?? 18
+
+  // IOU balance of user
+  const { data: iouBalance, refetch: refetchBalance } = useReadContract({
+    address: selectedToken?.iou,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [userAddress!],
+    query: { enabled: !!userAddress && !!selectedToken },
+  })
+
+  // Allowance of clearSwap over user's IOU tokens
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: selectedToken?.iou,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: [userAddress!, ADDRESSES.clearSwap],
+    query: { enabled: !!userAddress && !!selectedToken },
+  })
+
+  // Vault must be balanced for redemptions to be open
+  const { data: isBalanced } = useReadContract({
+    address: vault,
+    abi: CLEAR_VAULT_ABI,
+    functionName: 'isBalanced',
+  })
+
+  const { writeContractAsync } = useWriteContract()
+
+  const { isLoading: isApprovalPending, isSuccess: isApprovalSuccess } =
+    useWaitForTransactionReceipt({ hash: approvalHash })
+
+  const { isLoading: isRedeemPending, isSuccess: isRedeemSuccess } =
+    useWaitForTransactionReceipt({ hash: redeemHash })
+
+  const parsedAmount =
+    amount && !isNaN(Number(amount)) && Number(amount) > 0
+      ? parseUnits(amount, decimals)
+      : 0n
+
+  const needsApproval =
+    parsedAmount > 0n && allowance !== undefined && allowance < parsedAmount
+
+  const canRedeem =
+    !!userAddress &&
+    !!selectedToken &&
+    isBalanced === true
+
+  async function handleApprove() {
+    if (!selectedToken) return
+    setTxError(null)
+    try {
+      const hash = await writeContractAsync({
+        address: selectedToken.iou,
+        abi: ERC20_ABI,
+        functionName: 'approve',
+        args: [ADDRESSES.clearSwap, maxUint256],
+      })
+      setApprovalHash(hash)
+      await refetchAllowance()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.includes('User rejected')) setTxError(msg.slice(0, 120))
+    }
+  }
+
+  async function handleRedeem() {
+    if (!userAddress || !selectedToken) return
+    setTxError(null)
+    try {
+      const hash = await writeContractAsync({
+        address: ADDRESSES.clearSwap,
+        abi: CLEAR_SWAP_ABI,
+        functionName: 'redeemIOU',
+        args: [userAddress, vault, selectedToken.addr, parsedAmount],
+      })
+      setRedeemHash(hash)
+      setAmount('')
+      await refetchBalance()
+      await refetchAllowance()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.includes('User rejected')) setTxError(msg.slice(0, 120))
+    }
+  }
+
+  if (redeemableTokens.length === 0) return null
+
+  return (
+    <div className="bg-clear-card border border-clear-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-clear-border flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-semibold text-white">Redeem IOU</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Redeem your IOU tokens for the underlying asset via the ClearSwap contract.
+          </p>
+        </div>
+        {isBalanced === undefined ? (
+          <span className="text-xs text-slate-500 mt-0.5">—</span>
+        ) : isBalanced ? (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            Redemptions open
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/25 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            Redemptions closed
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 space-y-4">
+        {!userAddress && (
+          <p className="text-slate-400 text-sm">Connect your wallet to redeem IOU tokens.</p>
+        )}
+
+        {userAddress && (
+          <>
+            {/* Token selector */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400 uppercase tracking-wider">IOU Token</label>
+              <div className="flex flex-wrap gap-2">
+                {redeemableTokens.map((t) => {
+                  const info = TOKEN_BY_ADDRESS[t.addr.toLowerCase()]
+                  const sym = info?.symbol ?? t.addr.slice(0, 6)
+                  const active = selectedToken?.addr === t.addr
+                  return (
+                    <button
+                      key={t.addr}
+                      onClick={() => {
+                        setSelectedToken(t)
+                        setAmount('')
+                        setRedeemHash(undefined)
+                        setApprovalHash(undefined)
+                        setTxError(null)
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        active
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {sym} IOU
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {selectedToken && (
+              <>
+                {/* IOU info */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-slate-800/60 rounded-lg p-3">
+                    <p className="text-slate-400 mb-0.5">Your IOU Balance</p>
+                    <p className="text-white font-mono font-medium">
+                      {iouBalance !== undefined
+                        ? Number(formatUnits(iouBalance, decimals)).toLocaleString('en-US', {
+                            minimumFractionDigits: 4,
+                            maximumFractionDigits: 4,
+                          })
+                        : '—'}{' '}
+                      <span className="text-purple-400">{symbol} IOU</span>
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/60 rounded-lg p-3">
+                    <p className="text-slate-400 mb-0.5">Total Emitted (vault)</p>
+                    <p className="text-white font-mono font-medium">
+                      {Number(formatUnits(selectedToken.emitedIou, decimals)).toLocaleString(
+                        'en-US',
+                        { minimumFractionDigits: 4, maximumFractionDigits: 4 }
+                      )}{' '}
+                      <span className="text-purple-400">{symbol} IOU</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Amount input */}
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400 uppercase tracking-wider">Amount</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      min="0"
+                      className="flex-1 bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      onClick={() =>
+                        iouBalance !== undefined &&
+                        setAmount(formatUnits(iouBalance, decimals))
+                      }
+                      className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                    >
+                      Max
+                    </button>
+                  </div>
+                  {parsedAmount > 0n && iouBalance !== undefined && parsedAmount > iouBalance && (
+                    <p className="text-red-400 text-xs">Amount exceeds your IOU balance.</p>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3">
+                  {needsApproval && (
+                    <button
+                      onClick={handleApprove}
+                      disabled={isApprovalPending || !parsedAmount}
+                      className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {isApprovalPending ? 'Approving…' : `Approve ${symbol} IOU`}
+                    </button>
+                  )}
+                  <button
+                    onClick={handleRedeem}
+                    disabled={!canRedeem || isRedeemPending}
+                    className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {isRedeemPending ? 'Redeeming…' : 'Redeem IOU'}
+                  </button>
+                </div>
+
+                {isBalanced === false && (
+                  <p className="text-amber-400 text-xs">
+                    The vault is currently unbalanced — redemptions are unavailable until it rebalances.
+                  </p>
+                )}
+
+                {/* Status messages */}
+                {isApprovalSuccess && approvalHash && !needsApproval && (
+                  <p className="text-emerald-400 text-xs">
+                    Approval confirmed.{' '}
+                    <a
+                      href={`https://sepolia.arbiscan.io/tx/${approvalHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      View tx
+                    </a>
+                  </p>
+                )}
+                {isRedeemSuccess && redeemHash && (
+                  <p className="text-emerald-400 text-xs">
+                    IOU redeemed successfully.{' '}
+                    <a
+                      href={`https://sepolia.arbiscan.io/tx/${redeemHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      View tx
+                    </a>
+                  </p>
+                )}
+                {txError && (
+                  <p className="text-red-400 text-xs break-all">{txError}</p>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -242,6 +535,11 @@ export function VaultDetails() {
               </table>
             </div>
           </div>
+
+          {/* Redeem IOU */}
+          {tokens && (
+            <RedeemIOUPanel vault={vaultAddress} tokens={[...tokens]} />
+          )}
         </>
       )}
     </div>

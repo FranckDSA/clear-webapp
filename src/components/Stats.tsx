@@ -4,6 +4,9 @@ import {
   Area,
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -91,6 +94,26 @@ function VolumeTooltip({ active, payload, label }: any) {
           <span className="text-white font-mono">{formatUSD(String(Math.round(entry.value * 1e18)))}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+const DONUT_COLORS = ['#1a56db', '#7c3aed', '#059669', '#f59e0b', '#f97316', '#0284c7']
+
+function DonutTooltip({ active, payload, totalUSD }: { active?: boolean; payload?: any[]; totalUSD: number }) {
+  if (!active || !payload || !payload.length) return null
+  const entry = payload[0].payload
+  const pct = totalUSD > 0 ? ((entry.value / totalUSD) * 100).toFixed(1) : '0'
+  const formatted = entry.value >= 1e6
+    ? `$${(entry.value / 1e6).toFixed(2)}M`
+    : entry.value >= 1e3
+    ? `$${(entry.value / 1e3).toFixed(2)}K`
+    : `$${entry.value.toFixed(2)}`
+  return (
+    <div className="bg-clear-card border border-clear-border rounded-lg p-3 shadow-xl text-xs">
+      <p className="text-white font-semibold">{entry.symbol}</p>
+      <p className="text-slate-300 mt-1">{formatted}</p>
+      <p className="text-slate-400">{pct}% of vault</p>
     </div>
   )
 }
@@ -365,10 +388,17 @@ export function Stats() {
             {(vaults ?? []).map(vault => {
               const vaultStats = vaultStatsByAddress.get(vault.address) ?? []
               const latestVaultStat = vaultStats[vaultStats.length - 1]
-              const vaultTvlData = vaultStats.slice(-30).map(s => ({
-                date: formatDay(s.day),
-                tvl: toUSDNumber(s.tvlUSD),
-              }))
+              const donutData = vault.tokens
+                .map(token => {
+                  const dec = Number(token.decimals)
+                  const balance = Number(BigInt(token.balance)) / 10 ** dec
+                  const price = token.oracle
+                    ? Number(BigInt(token.oracle.price)) / 10 ** Number(token.oracle.oracleDecimals)
+                    : 1
+                  return { symbol: token.symbol, value: balance * price }
+                })
+                .filter(d => d.value > 0)
+              const totalUSD = donutData.reduce((sum, d) => sum + d.value, 0)
 
               return (
                 <div key={vault.id} className="bg-clear-card border border-clear-border rounded-xl p-5">
@@ -415,41 +445,42 @@ export function Stats() {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Vault TVL chart */}
+                    {/* Asset proportions donut */}
                     <div>
-                      <p className="text-xs text-slate-400 mb-3">TVL Over Time</p>
-                      {vaultTvlData.length === 0 ? (
-                        <p className="text-slate-500 text-sm py-4">No historical data</p>
+                      <p className="text-xs text-slate-400 mb-3">Asset Proportions</p>
+                      {donutData.length === 0 ? (
+                        <p className="text-slate-500 text-sm py-4">No asset data</p>
                       ) : (
-                        <ResponsiveContainer width="100%" height={160}>
-                          <AreaChart data={vaultTvlData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                            <defs>
-                              <linearGradient id={`vaultTvlGrad-${vault.id}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                            <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} />
-                            <YAxis
-                              tick={{ fill: '#94a3b8', fontSize: 9 }}
-                              axisLine={false}
-                              tickLine={false}
-                              tickFormatter={v => `$${v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : v.toFixed(0)}`}
-                              width={52}
-                            />
-                            <Tooltip content={<ChartTooltip />} />
-                            <Area
-                              type="monotone"
-                              dataKey="tvl"
-                              name="TVL"
-                              stroke="#7c3aed"
-                              strokeWidth={2}
-                              fill={`url(#vaultTvlGrad-${vault.id})`}
-                              dot={false}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
+                        <div className="flex items-center gap-3">
+                          <PieChart width={160} height={160}>
+                            <Pie
+                              data={donutData}
+                              cx={75}
+                              cy={75}
+                              innerRadius={48}
+                              outerRadius={72}
+                              paddingAngle={2}
+                              dataKey="value"
+                              strokeWidth={0}
+                            >
+                              {donutData.map((_, i) => (
+                                <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<DonutTooltip totalUSD={totalUSD} />} />
+                          </PieChart>
+                          <div className="flex-1 space-y-2">
+                            {donutData.map((d, i) => (
+                              <div key={d.symbol} className="flex items-center gap-1.5 text-xs">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                                />
+                                <span className="text-slate-300">{d.symbol}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
 
