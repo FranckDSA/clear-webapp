@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi'
 import { useQuery } from '@tanstack/react-query'
 import {
   LineChart,
@@ -12,18 +12,15 @@ import {
   ReferenceLine,
 } from 'recharts'
 import {
-  ADDRESSES,
-  TOKENS,
   CLEAR_ORACLE_ABI,
-  TOKEN_BY_ADDRESS,
+  getTokenByAddress,
 } from '../config/contracts'
 import {
-  graphqlClient,
+  getGraphQLClient,
   GET_ORACLE_HISTORY,
   ClearOracleHistoryData,
 } from '../lib/graphql'
-
-const TOKEN_LIST = Object.values(TOKENS)
+import { useChainConfig } from '../hooks/useChainConfig'
 
 // Oracle prices use 8 decimals (1.00 USD = 100000000)
 const ORACLE_DECIMALS = 8
@@ -34,11 +31,13 @@ function formatOraclePrice(raw: bigint): string {
 
 function TokenOracleRow({
   token,
+  oracleAddress,
 }: {
   token: { address: `0x${string}`; symbol: string; decimals: number }
+  oracleAddress: `0x${string}`
 }) {
   const { data: oracleData } = useReadContract({
-    address: ADDRESSES.clearOracle,
+    address: oracleAddress,
     abi: CLEAR_ORACLE_ABI,
     functionName: 'getPriceAndRedemptionPrice',
     args: [token.address],
@@ -97,11 +96,11 @@ interface OracleHistoryResponse {
   clearOracles: ClearOracleHistoryData[]
 }
 
-function useOracleHistory() {
+function useOracleHistory(chainId: number) {
   return useQuery({
-    queryKey: ['oracleHistory'],
+    queryKey: ['oracleHistory', chainId],
     queryFn: () =>
-      graphqlClient.request<OracleHistoryResponse>(GET_ORACLE_HISTORY).then(d => d.clearOracles),
+      getGraphQLClient(chainId).request<OracleHistoryResponse>(GET_ORACLE_HISTORY).then(d => d.clearOracles),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
@@ -114,7 +113,8 @@ function formatTimestamp(ts: string): string {
 }
 
 function OraclePriceHistoryChart() {
-  const { data: oracles, isLoading } = useOracleHistory()
+  const chainId = useChainId()
+  const { data: oracles, isLoading } = useOracleHistory(chainId)
   const [hiddenTokens, setHiddenTokens] = useState<Set<string>>(new Set())
 
   if (isLoading) {
@@ -140,7 +140,7 @@ function OraclePriceHistoryChart() {
   // Map oracle asset addresses to token symbols and build chart data
   const tokenLines = oracles
     .map(oracle => {
-      const token = TOKEN_BY_ADDRESS[oracle.asset.toLowerCase()]
+      const token = getTokenByAddress(oracle.asset, chainId)
       const symbol = token?.symbol ?? oracle.asset.slice(0, 6)
       return { symbol, asset: oracle.asset, history: oracle.priceHistory }
     })
@@ -278,7 +278,9 @@ function OraclePriceHistoryChart() {
 
 export function OracleUpdate() {
   const { address: userAddress } = useAccount()
+  const { addresses, tokens } = useChainConfig()
 
+  const TOKEN_LIST = Object.values(tokens)
   const [selectedToken, setSelectedToken] = useState(TOKEN_LIST[0])
   const [newPrice, setNewPrice] = useState('')
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
@@ -288,7 +290,7 @@ export function OracleUpdate() {
 
   // Current oracle price
   const { data: currentOracleData, refetch } = useReadContract({
-    address: ADDRESSES.clearOracle,
+    address: addresses.clearOracle,
     abi: CLEAR_ORACLE_ABI,
     functionName: 'getPriceAndRedemptionPrice',
     args: [selectedToken.address],
@@ -303,7 +305,7 @@ export function OracleUpdate() {
     if (!userAddress || !newPrice) return
     const priceRaw = BigInt(Math.round(Number(newPrice) * 10 ** ORACLE_DECIMALS))
     const hash = await writeContractAsync({
-      address: ADDRESSES.clearOracle,
+      address: addresses.clearOracle,
       abi: CLEAR_ORACLE_ABI,
       functionName: 'updateCustomOraclePrice',
       args: [selectedToken.address, priceRaw],
@@ -346,7 +348,7 @@ export function OracleUpdate() {
             </thead>
             <tbody>
               {TOKEN_LIST.map((token) => (
-                <TokenOracleRow key={token.address} token={token} />
+                <TokenOracleRow key={token.address} token={token} oracleAddress={addresses.clearOracle} />
               ))}
             </tbody>
           </table>

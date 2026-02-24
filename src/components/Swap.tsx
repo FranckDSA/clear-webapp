@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
 import { useQuery } from '@tanstack/react-query'
 import {
-  ADDRESSES,
-  TOKENS,
   ERC20_ABI,
   CLEAR_SWAP_ABI,
 } from '../config/contracts'
-import { graphqlClient, CLEAR_ROUTE_QUERY, ClearRouteResult } from '../lib/graphql'
-
-const TOKEN_LIST = Object.values(TOKENS)
+import { getGraphQLClient, CLEAR_ROUTE_QUERY, ClearRouteResult } from '../lib/graphql'
+import { useChainConfig } from '../hooks/useChainConfig'
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
@@ -23,8 +20,11 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function Swap() {
   const { address: userAddress } = useAccount()
+  const chainId = useChainId()
+  const { addresses, tokens } = useChainConfig()
 
-  const [fallbackVaultAddress, setFallbackVaultAddress] = useState<`0x${string}`>(ADDRESSES.defaultVault)
+  const TOKEN_LIST = Object.values(tokens)
+  const [fallbackVaultAddress, setFallbackVaultAddress] = useState<`0x${string}`>(addresses.defaultVault)
   const [fromToken, setFromToken] = useState(TOKEN_LIST[1]) // USDC
   const [toToken, setToToken] = useState(TOKEN_LIST[4]) // USDT
   const [amountIn, setAmountIn] = useState('')
@@ -34,6 +34,11 @@ export function Swap() {
   const [approvalHash, setApprovalHash] = useState<`0x${string}` | undefined>()
 
   const debouncedAmountIn = useDebounce(amountIn, 400)
+
+  // Update vault address when chain changes
+  useEffect(() => {
+    setFallbackVaultAddress(addresses.defaultVault)
+  }, [addresses.defaultVault])
 
   const parsedAmountIn =
     debouncedAmountIn && !isNaN(Number(debouncedAmountIn)) && Number(debouncedAmountIn) > 0
@@ -49,9 +54,9 @@ export function Swap() {
     error: routeError,
     isFetching: routeFetching,
   } = useQuery({
-    queryKey: ['clearRoute', userAddress, fromToken.address, toToken.address, parsedAmountIn.toString(), receiveIOU],
+    queryKey: ['clearRoute', chainId, userAddress, fromToken.address, toToken.address, parsedAmountIn.toString(), receiveIOU],
     queryFn: async () => {
-      const res = await graphqlClient.request<{ clearRoute: ClearRouteResult }>(CLEAR_ROUTE_QUERY, {
+      const res = await getGraphQLClient(chainId).request<{ clearRoute: ClearRouteResult }>(CLEAR_ROUTE_QUERY, {
         receiver: userAddress,
         fromToken: fromToken.address,
         toToken: toToken.address,
@@ -75,7 +80,7 @@ export function Swap() {
     isLoading: isPreviewLoading,
     error: previewError,
   } = useReadContract({
-    address: ADDRESSES.clearSwap,
+    address: addresses.clearSwap,
     abi: CLEAR_SWAP_ABI,
     functionName: 'previewSwap',
     args: [fallbackVaultAddress, fromToken.address, toToken.address, parsedAmountIn, receiveIOU],
@@ -86,7 +91,7 @@ export function Swap() {
   })
 
   const { data: depegThreshold } = useReadContract({
-    address: ADDRESSES.clearSwap,
+    address: addresses.clearSwap,
     abi: CLEAR_SWAP_ABI,
     functionName: 'depegThresholdBps',
   })
@@ -103,7 +108,7 @@ export function Swap() {
   // Resolve the swap contract and vault to use
   const resolvedSwapContract = (!graphqlDown && routeData?.swapContract
     ? routeData.swapContract
-    : ADDRESSES.clearSwap) as `0x${string}`
+    : addresses.clearSwap) as `0x${string}`
 
   // Current allowance against the resolved swap contract
   const { data: allowance, refetch: refetchAllowance } = useReadContract({

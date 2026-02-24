@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { useChainId, useChains } from 'wagmi'
 import { VaultDetails } from './components/VaultDetails'
 import { Swap } from './components/Swap'
 import { OracleUpdate } from './components/OracleUpdate'
@@ -7,13 +8,30 @@ import { Stats } from './components/Stats'
 import { CurvePools } from './components/CurvePools'
 import { Mint } from './components/Mint'
 import { RebalanceAgent } from './components/RebalanceAgent'
+import { useChainConfig } from './hooks/useChainConfig'
 
 type Tab = 'home' | 'vault' | 'swap' | 'pools' | 'oracle' | 'mint' | 'agent'
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home')
+  const chainId = useChainId()
+  const chains = useChains()
+  const { addresses } = useChainConfig()
 
-  const tabs: { id: Tab; label: string; icon: JSX.Element }[] = [
+  const currentChain = chains.find(c => c.id === chainId)
+  const chainName = currentChain?.name || 'Unknown Network'
+
+  // Get block explorer base URL
+  const getExplorerUrl = () => {
+    if (chainId === 1) return 'https://etherscan.io'
+    if (chainId === 421614) return 'https://sepolia.arbiscan.io'
+    return currentChain?.blockExplorers?.default.url || '#'
+  }
+
+  const explorerUrl = getExplorerUrl()
+
+  // Filter tabs based on chain - hide faucet on mainnet
+  const allTabs: { id: Tab; label: string; icon: JSX.Element }[] = [
     {
       id: 'home',
       label: 'Overview',
@@ -81,6 +99,16 @@ export function App() {
     },
   ]
 
+  // Hide faucet tab on mainnet
+  const tabs = allTabs.filter(tab => tab.id !== 'mint' || chainId !== 1)
+
+  // Redirect from mint tab if switching to mainnet
+  useEffect(() => {
+    if (activeTab === 'mint' && chainId === 1) {
+      setActiveTab('home')
+    }
+  }, [chainId, activeTab])
+
   return (
     <div className="min-h-screen bg-clear-dark">
       {/* Header */}
@@ -95,7 +123,7 @@ export function App() {
             </div>
             <div>
               <h1 className="text-base font-bold text-white leading-none">Clear Protocol</h1>
-              <p className="text-xs text-slate-400 leading-none mt-0.5">Arbitrum Sepolia</p>
+              <p className="text-xs text-slate-400 leading-none mt-0.5">{chainName}</p>
             </div>
           </div>
 
@@ -160,10 +188,10 @@ export function App() {
       {/* Footer */}
       <footer className="border-t border-clear-border mt-16 py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <span>Clear Protocol — Testnet Interface</span>
+          <span>Clear Protocol — Multi-Chain Interface</span>
           <div className="flex items-center gap-4">
             <a
-              href="https://sepolia.arbiscan.io/address/0x745dbbA17916112DB6c5289863073705A3644db1"
+              href={`${explorerUrl}/address/${addresses.clearSwap}`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-slate-300 transition-colors"
@@ -171,7 +199,7 @@ export function App() {
               ClearSwap ↗
             </a>
             <a
-              href="https://sepolia.arbiscan.io/address/0x81Ff66eEf8516C44187B47C6a497b248eA74213D"
+              href={`${explorerUrl}/address/${addresses.clearOracle}`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-slate-300 transition-colors"
@@ -179,7 +207,7 @@ export function App() {
               Oracle ↗
             </a>
             <a
-              href="https://sepolia.arbiscan.io/address/0x02912591442Beb7Fd824Df4c90006093371898EF"
+              href={`${explorerUrl}/address/${addresses.defaultVault}`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-slate-300 transition-colors"

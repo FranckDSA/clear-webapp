@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useChainId } from 'wagmi'
 import {
   AreaChart,
   Area,
@@ -15,7 +16,7 @@ import {
   Legend,
 } from 'recharts'
 import {
-  graphqlClient,
+  getGraphQLClient,
   GET_GLOBAL_STATS,
   GET_VAULT_DAILY_STATS,
   GET_VAULTS,
@@ -38,28 +39,28 @@ interface VaultsResponse {
   clearVaults: ClearVaultData[]
 }
 
-function useGlobalStats() {
+function useGlobalStats(chainId: number) {
   return useQuery({
-    queryKey: ['globalStats'],
-    queryFn: () => graphqlClient.request<GlobalStatsResponse>(GET_GLOBAL_STATS).then(d => d.clearStats),
+    queryKey: ['globalStats', chainId],
+    queryFn: () => getGraphQLClient(chainId).request<GlobalStatsResponse>(GET_GLOBAL_STATS).then(d => d.clearStats),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
 }
 
-function useVaultDailyStats() {
+function useVaultDailyStats(chainId: number) {
   return useQuery({
-    queryKey: ['vaultDailyStats'],
-    queryFn: () => graphqlClient.request<VaultDailyStatsResponse>(GET_VAULT_DAILY_STATS).then(d => d.clearStats),
+    queryKey: ['vaultDailyStats', chainId],
+    queryFn: () => getGraphQLClient(chainId).request<VaultDailyStatsResponse>(GET_VAULT_DAILY_STATS).then(d => d.clearStats),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
 }
 
-function useVaults() {
+function useVaults(chainId: number) {
   return useQuery({
-    queryKey: ['vaults'],
-    queryFn: () => graphqlClient.request<VaultsResponse>(GET_VAULTS).then(d => d.clearVaults),
+    queryKey: ['vaults', chainId],
+    queryFn: () => getGraphQLClient(chainId).request<VaultsResponse>(GET_VAULTS).then(d => d.clearVaults),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
@@ -175,9 +176,10 @@ function tokenBalance(balance: string, decimals: string): string {
 }
 
 export function Stats() {
-  const { data: globalStats, isLoading: globalLoading, error: globalError } = useGlobalStats()
-  const { data: vaultDailyStats, isLoading: vaultLoading } = useVaultDailyStats()
-  const { data: vaults, isLoading: vaultsLoading } = useVaults()
+  const chainId = useChainId()
+  const { data: globalStats, isLoading: globalLoading, error: globalError } = useGlobalStats(chainId)
+  const { data: vaultDailyStats, isLoading: vaultLoading } = useVaultDailyStats(chainId)
+  const { data: vaults, isLoading: vaultsLoading } = useVaults(chainId)
 
   const isLoading = globalLoading || vaultLoading || vaultsLoading
 

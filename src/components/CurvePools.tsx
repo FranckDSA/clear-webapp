@@ -5,10 +5,11 @@ import {
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useChainId,
 } from 'wagmi'
 import { parseUnits, formatUnits, type Address } from 'viem'
 import {
-  graphqlClient,
+  getGraphQLClient,
   GET_CURVE_POOLS,
   type CurvePoolData,
   type CurvePoolCoinData,
@@ -891,12 +892,13 @@ function PoolDetail({ pool }: { pool: CurvePoolData }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function CurvePools() {
+  const chainId = useChainId()
   const [selectedPool, setSelectedPool] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['curvePools'],
+    queryKey: ['curvePools', chainId],
     queryFn: async () => {
-      const res = await graphqlClient.request<{ curvePools: CurvePoolData[] }>(GET_CURVE_POOLS)
+      const res = await getGraphQLClient(chainId).request<{ curvePools: CurvePoolData[] }>(GET_CURVE_POOLS)
       return res.curvePools
     },
     refetchInterval: 30_000,

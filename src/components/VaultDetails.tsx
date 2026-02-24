@@ -1,14 +1,14 @@
-import { useState } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useState, useEffect } from 'react'
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi'
 import { formatUnits, parseUnits, maxUint256 } from 'viem'
 import {
-  ADDRESSES,
   CLEAR_VAULT_ABI,
   CLEAR_ORACLE_ABI,
   CLEAR_SWAP_ABI,
   ERC20_ABI,
-  TOKEN_BY_ADDRESS,
+  getTokenByAddress,
 } from '../config/contracts'
+import { useChainConfig } from '../hooks/useChainConfig'
 
 interface TokenDetails {
     addr: `0x${string}`;
@@ -34,8 +34,8 @@ function formatPrice(price: bigint | undefined): string {
   return `$${(Number(price) / 1e8).toFixed(6)}`
 }
 
-function TokenRow({ vault, token }: { vault: `0x${string}`, token: TokenDetails }) {
-  const tokenInfo = TOKEN_BY_ADDRESS[token.addr.toLowerCase()]
+function TokenRow({ vault, token, oracleAddress, chainId }: { vault: `0x${string}`, token: TokenDetails, oracleAddress: `0x${string}`, chainId: number }) {
+  const tokenInfo = getTokenByAddress(token.addr, chainId)
   const symbol = tokenInfo?.symbol ?? token.addr.slice(0, 8) + '...'
   const decimals = token.decimals ?? 18
 
@@ -47,7 +47,7 @@ function TokenRow({ vault, token }: { vault: `0x${string}`, token: TokenDetails 
   })
 
   const { data: oracleData } = useReadContract({
-    address: ADDRESSES.clearOracle,
+    address: oracleAddress,
     abi: CLEAR_ORACLE_ABI,
     functionName: 'getPriceAndRedemptionPrice',
     args: [token.addr as `0x${string}`],
@@ -117,7 +117,7 @@ function TokenRow({ vault, token }: { vault: `0x${string}`, token: TokenDetails 
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
-function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: TokenDetails[] }) {
+function RedeemIOUPanel({ vault, tokens, clearSwapAddress, chainId }: { vault: `0x${string}`; tokens: TokenDetails[]; clearSwapAddress: `0x${string}`; chainId: number }) {
   const { address: userAddress } = useAccount()
 
   const redeemableTokens = tokens.filter(
@@ -133,7 +133,7 @@ function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: Token
   const [txError, setTxError] = useState<string | null>(null)
 
   const tokenInfo = selectedToken
-    ? TOKEN_BY_ADDRESS[selectedToken.addr.toLowerCase()]
+    ? getTokenByAddress(selectedToken.addr, chainId)
     : null
   const symbol = tokenInfo?.symbol ?? selectedToken?.addr.slice(0, 8) + '...'
   const decimals = selectedToken?.decimals ?? 18
@@ -152,7 +152,7 @@ function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: Token
     address: selectedToken?.iou,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: [userAddress!, ADDRESSES.clearSwap],
+    args: [userAddress!, clearSwapAddress],
     query: { enabled: !!userAddress && !!selectedToken },
   })
 
@@ -192,7 +192,7 @@ function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: Token
         address: selectedToken.iou,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [ADDRESSES.clearSwap, maxUint256],
+        args: [clearSwapAddress, maxUint256],
       })
       setApprovalHash(hash)
       await refetchAllowance()
@@ -207,7 +207,7 @@ function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: Token
     setTxError(null)
     try {
       const hash = await writeContractAsync({
-        address: ADDRESSES.clearSwap,
+        address: clearSwapAddress,
         abi: CLEAR_SWAP_ABI,
         functionName: 'redeemIOU',
         args: [userAddress, vault, selectedToken.addr, parsedAmount],
@@ -260,7 +260,7 @@ function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: Token
               <label className="text-xs text-slate-400 uppercase tracking-wider">IOU Token</label>
               <div className="flex flex-wrap gap-2">
                 {redeemableTokens.map((t) => {
-                  const info = TOKEN_BY_ADDRESS[t.addr.toLowerCase()]
+                  const info = getTokenByAddress(t.addr, chainId)
                   const sym = info?.symbol ?? t.addr.slice(0, 6)
                   const active = selectedToken?.addr === t.addr
                   return (
@@ -407,8 +407,17 @@ function RedeemIOUPanel({ vault, tokens }: { vault: `0x${string}`; tokens: Token
 }
 
 export function VaultDetails() {
-  const [vaultAddress, setVaultAddress] = useState<`0x${string}`>(ADDRESSES.defaultVault)
-  const [inputAddress, setInputAddress] = useState<string>(ADDRESSES.defaultVault)
+  const chainId = useChainId()
+  const { addresses } = useChainConfig()
+
+  const [vaultAddress, setVaultAddress] = useState<`0x${string}`>(addresses.defaultVault)
+  const [inputAddress, setInputAddress] = useState<string>(addresses.defaultVault)
+
+  // Update vault address when chain changes
+  useEffect(() => {
+    setVaultAddress(addresses.defaultVault)
+    setInputAddress(addresses.defaultVault)
+  }, [addresses.defaultVault])
 
   const { data: vaultDetails, isLoading, error } = useReadContract({
     address: vaultAddress,
@@ -423,7 +432,7 @@ export function VaultDetails() {
   })
 
   const { data: vaultsLength } = useReadContract({
-    address: ADDRESSES.clearFactory,
+    address: addresses.clearFactory,
     abi: [
       {
         inputs: [],
@@ -529,6 +538,8 @@ export function VaultDetails() {
                       key={token.addr}
                       token={token}
                       vault={vaultAddress}
+                      oracleAddress={addresses.clearOracle}
+                      chainId={chainId}
                     />
                   ))}
                 </tbody>
@@ -538,7 +549,7 @@ export function VaultDetails() {
 
           {/* Redeem IOU */}
           {tokens && (
-            <RedeemIOUPanel vault={vaultAddress} tokens={[...tokens]} />
+            <RedeemIOUPanel vault={vaultAddress} tokens={[...tokens]} clearSwapAddress={addresses.clearSwap} chainId={chainId} />
           )}
         </>
       )}

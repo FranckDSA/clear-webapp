@@ -1,48 +1,130 @@
 import { type Address } from 'viem'
+import { mainnet, arbitrumSepolia } from 'wagmi/chains'
 
-// Deployed on Arbitrum Sepolia (chain 421614)
-export const ADDRESSES = {
-  clearFactory: '0x9e422482f0ffC1f0b98f94db79bC771B184fD71A' as Address,
-  clearOracle: '0x81Ff66eEf8516C44187B47C6a497b248eA74213D' as Address,
-  clearSwap: '0x745dbbA17916112DB6c5289863073705A3644db1' as Address,
-  clearAccessManager: '0x665a87D3FE39e2B5Aa8667747E23871d124D3785' as Address,
-  // The vault deployed via the deploy script
-  defaultVault: '0x02912591442Beb7Fd824Df4c90006093371898EF' as Address,
-  clearRebalanceAgent: '0x1bAC1024D767d3Ee738a89A622651e2AB59dDC6C' as Address,
-} as const
+// ─── Chain-specific Configuration ─────────────────────────────────────────
 
-export const TOKENS: Record<string, { address: Address; symbol: string; decimals: number }> = {
-  GHO: {
-    address: '0x7908e48e21c4917553a4e7d94Cb18F0c202E30a7',
-    symbol: 'GHO',
-    decimals: 18,
+export type ChainConfig = {
+  addresses: {
+    clearFactory: Address
+    clearOracle: Address
+    clearSwap: Address
+    clearAccessManager: Address
+    defaultVault: Address
+    clearRebalanceAgent: Address | null
+  }
+  tokens: Record<string, { address: Address; symbol: string; decimals: number }>
+}
+
+// Ethereum Mainnet (chain 1)
+const MAINNET_CONFIG: ChainConfig = {
+  addresses: {
+    clearFactory: '0x78aba0729345219B8Ec4D5c9c19D23186E0803fB',
+    clearOracle: '0x1eE149bd53B4193987109f604A1715CBA861d3a3',
+    clearSwap: '0x07656EA4898760d55feA211015df247b44B9D81b',
+    clearAccessManager: '0x02792c6E39A4F338283e9B6152e2182F9E2153b3',
+    defaultVault: '0xc4E625Bc9B15F568b2685922fb8e46a7522c4910', // TODO: Update with actual vault
+    clearRebalanceAgent: '0xfd86FAEF607A67ED68F7C29042E022196f21DE10',
   },
-  USDC: {
-    address: '0xE9e3753c394Be0B92A38E2d616E3dA1EF97F9F56',
-    symbol: 'USDC',
-    decimals: 6,
-  },
-  USDe: {
-    address: '0xd344d6E2db6DBa751e0Ec8bF7e12176F0e27e314',
-    symbol: 'USDe',
-    decimals: 18,
-  },
-  USDS: {
-    address: '0xe55cAEC8C17E75Ef2fa3E0BbE7470d7965d23619',
-    symbol: 'USDS',
-    decimals: 18,
-  },
-  USDT: {
-    address: '0xec5e1fdcE04f21a84b453217B89fe111BC93CFDf',
-    symbol: 'USDT',
-    decimals: 6,
+  tokens: {
+    GHO: {
+      address: '0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f',
+      symbol: 'GHO',
+      decimals: 18,
+    },
+    USDC: {
+      address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      symbol: 'USDC',
+      decimals: 6,
+    },
+    USDe: {
+      address: '0x4c9EDD5852cd905f086C759E8383e09bff1E68B3',
+      symbol: 'USDe',
+      decimals: 18,
+    },
+    USDS: {
+      address: '0xdC035D45d973E3EC169d2276DDab16f1e407384F',
+      symbol: 'USDS',
+      decimals: 18,
+    },
+    USDT: {
+      address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+      symbol: 'USDT',
+      decimals: 6,
+    },
   },
 }
+
+// Arbitrum Sepolia (chain 421614)
+const ARBITRUM_SEPOLIA_CONFIG: ChainConfig = {
+  addresses: {
+    clearFactory: '0x9e422482f0ffC1f0b98f94db79bC771B184fD71A',
+    clearOracle: '0x81Ff66eEf8516C44187B47C6a497b248eA74213D',
+    clearSwap: '0x745dbbA17916112DB6c5289863073705A3644db1',
+    clearAccessManager: '0x665a87D3FE39e2B5Aa8667747E23871d124D3785',
+    defaultVault: '0x02912591442Beb7Fd824Df4c90006093371898EF',
+    clearRebalanceAgent: '0x615486797034Cf4bd6cC56F8cfd530A02c5ac35e',
+  },
+  tokens: {
+    GHO: {
+      address: '0x7908e48e21c4917553a4e7d94Cb18F0c202E30a7',
+      symbol: 'GHO',
+      decimals: 18,
+    },
+    USDC: {
+      address: '0xE9e3753c394Be0B92A38E2d616E3dA1EF97F9F56',
+      symbol: 'USDC',
+      decimals: 6,
+    },
+    USDe: {
+      address: '0xd344d6E2db6DBa751e0Ec8bF7e12176F0e27e314',
+      symbol: 'USDe',
+      decimals: 18,
+    },
+    USDS: {
+      address: '0xe55cAEC8C17E75Ef2fa3E0BbE7470d7965d23619',
+      symbol: 'USDS',
+      decimals: 18,
+    },
+    USDT: {
+      address: '0xec5e1fdcE04f21a84b453217B89fe111BC93CFDf',
+      symbol: 'USDT',
+      decimals: 6,
+    },
+  },
+}
+
+export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
+  [mainnet.id]: MAINNET_CONFIG,
+  [arbitrumSepolia.id]: ARBITRUM_SEPOLIA_CONFIG,
+}
+
+// Helper function to get configuration for a chain
+export function getChainConfig(chainId: number): ChainConfig {
+  const config = CHAIN_CONFIGS[chainId]
+  if (!config) {
+    // Default to Arbitrum Sepolia if chain not found
+    return ARBITRUM_SEPOLIA_CONFIG
+  }
+  return config
+}
+
+// Backwards compatibility - default to Arbitrum Sepolia
+export const ADDRESSES = ARBITRUM_SEPOLIA_CONFIG.addresses
+export const TOKENS = ARBITRUM_SEPOLIA_CONFIG.tokens
 
 export const TOKEN_BY_ADDRESS: Record<string, { address: Address; symbol: string; decimals: number }> =
   Object.fromEntries(
     Object.values(TOKENS).map((t) => [t.address.toLowerCase(), t])
   )
+
+// Helper function to get token by address for a specific chain
+export function getTokenByAddress(address: string, chainId: number): { address: Address; symbol: string; decimals: number } | undefined {
+  const config = getChainConfig(chainId)
+  const tokenByAddress: Record<string, { address: Address; symbol: string; decimals: number }> = Object.fromEntries(
+    Object.values(config.tokens).map((t) => [t.address.toLowerCase(), t])
+  )
+  return tokenByAddress[address.toLowerCase()]
+}
 
 // ─── ABIs ──────────────────────────────────────────────────────────────────
 
@@ -1069,14 +1151,15 @@ export const CLEAR_FACTORY_ABI = [
 ] as const
 
 export const CLEAR_REBALANCE_AGENT_ABI = [
-  { inputs: [], name: 'feeBps', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'owner', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'tokenBalances', outputs: [{ name: '', type: 'address[]' }, { name: '', type: 'uint256[]' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'tokensLength', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [{ name: '', type: 'address' }], name: 'tokens', outputs: [{ name: 'enabled', type: 'bool' }, { name: 'decimals', type: 'uint8' }, { name: 'price', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }], name: 'tokens', outputs: [{ name: 'enabled', type: 'bool' }, { name: 'decimals', type: 'uint8' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '', type: 'address' }, { name: '', type: 'address' }], name: 'routeRates', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: '', type: 'address' }], name: 'whitelistedSwappers', outputs: [{ name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
-  { inputs: [{ name: '_newFeeBps', type: 'uint256' }], name: 'setFeeBps', outputs: [], stateMutability: 'nonpayable', type: 'function' },
-  { inputs: [{ name: '_token', type: 'address' }, { name: '_price', type: 'uint256' }], name: 'configureToken', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_token', type: 'address' }], name: 'configureToken', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_from', type: 'address' }, { name: '_to', type: 'address' }, { name: '_rate', type: 'uint256' }], name: 'configureRoute', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: '_from', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amountIn', type: 'uint256' }], name: 'estimateSwap', outputs: [{ name: 'amountOut', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: '_token', type: 'address' }, { name: '_amount', type: 'uint256' }], name: 'depositLiquidity', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: '_token', type: 'address' }, { name: '_amount', type: 'uint256' }], name: 'withdrawLiquidity', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: '_swapper', type: 'address' }], name: 'addSwapperToWhitelist', outputs: [], stateMutability: 'nonpayable', type: 'function' },

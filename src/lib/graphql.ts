@@ -1,7 +1,22 @@
 import { GraphQLClient, gql } from 'graphql-request'
+import { mainnet, arbitrumSepolia } from 'wagmi/chains'
 
-export const GRAPHQL_ENDPOINT = 'https://api-arb-sepolia-clear.trevee.xyz/graphql'
+// Chain-specific GraphQL endpoints
+export const GRAPHQL_ENDPOINTS: Record<number, string> = {
+  [mainnet.id]: 'https://api-eth-mainnet-clear.trevee.xyz/graphql',
+  [arbitrumSepolia.id]: 'https://api-arb-sepolia-clear.trevee.xyz/graphql',
+}
 
+export function getGraphQLEndpoint(chainId: number): string {
+  return GRAPHQL_ENDPOINTS[chainId] || GRAPHQL_ENDPOINTS[arbitrumSepolia.id]
+}
+
+export function getGraphQLClient(chainId: number): GraphQLClient {
+  return new GraphQLClient(getGraphQLEndpoint(chainId))
+}
+
+// Legacy export for backwards compatibility
+export const GRAPHQL_ENDPOINT = GRAPHQL_ENDPOINTS[arbitrumSepolia.id]
 export const graphqlClient = new GraphQLClient(GRAPHQL_ENDPOINT)
 
 export interface ClearStatsData {

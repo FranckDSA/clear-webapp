@@ -5,18 +5,15 @@ import {
   useReadContracts,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useChainId,
 } from 'wagmi'
 import { formatUnits, parseUnits, maxUint256, isAddress } from 'viem'
 import {
-  ADDRESSES,
   ERC20_ABI,
-  TOKEN_BY_ADDRESS,
-  TOKENS,
+  getTokenByAddress,
   CLEAR_REBALANCE_AGENT_ABI,
 } from '../config/contracts'
-
-const AGENT = ADDRESSES.clearRebalanceAgent
-const TOKEN_LIST = Object.values(TOKENS)
+import { useChainConfig } from '../hooks/useChainConfig'
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -24,21 +21,11 @@ function shortAddr(addr: string) {
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`
 }
 
-function fmtBps(bps: bigint | undefined) {
-  if (bps === undefined) return '—'
-  return `${(Number(bps) / 100).toFixed(2)}%  (${bps} bps)`
-}
-
 function fmtTokenAmount(amount: bigint, decimals: number) {
   const n = Number(formatUnits(amount, decimals))
   if (n >= 1e6) return `${(n / 1e6).toFixed(4)}M`
   if (n >= 1e3) return `${(n / 1e3).toFixed(4)}K`
   return n.toFixed(6)
-}
-
-// Price stored with 8 decimals (same as oracle)
-function fmtPrice(price: bigint) {
-  return `$${(Number(price) / 1e8).toFixed(6)}`
 }
 
 // ─── sub-components ────────────────────────────────────────────────────────
@@ -117,18 +104,32 @@ function InlineError({ msg }: { msg: string | null }) {
 
 export function RebalanceAgent() {
   const { address: userAddress } = useAccount()
+  const chainId = useChainId()
+  const { addresses, tokens } = useChainConfig()
+
+  const AGENT = addresses.clearRebalanceAgent
+  const TOKEN_LIST = Object.values(tokens)
+
+  // Check if agent is available on this chain
+  if (!AGENT || AGENT === '0x0000000000000000000000000000000000000000') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-white">Rebalance Agent</h2>
+          <p className="text-slate-400 text-sm mt-1">Manage the ClearRebalanceAgent contract</p>
+        </div>
+        <div className="bg-clear-card border border-clear-border rounded-xl p-8 text-center">
+          <p className="text-slate-400">Rebalance Agent is not available on this chain</p>
+        </div>
+      </div>
+    )
+  }
 
   // ── contract reads ──────────────────────────────────────────────────────
   const { data: owner } = useReadContract({
     address: AGENT,
     abi: CLEAR_REBALANCE_AGENT_ABI,
     functionName: 'owner',
-  })
-
-  const { data: feeBps, refetch: refetchFee } = useReadContract({
-    address: AGENT,
-    abi: CLEAR_REBALANCE_AGENT_ABI,
-    functionName: 'feeBps',
   })
 
   const { data: tokenBalancesData, refetch: refetchBalances } = useReadContract({
@@ -171,7 +172,7 @@ export function RebalanceAgent() {
       </div>
 
       {/* Overview stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-clear-card border border-clear-border rounded-xl p-4">
           <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Owner</p>
           {owner ? (
@@ -186,10 +187,6 @@ export function RebalanceAgent() {
           ) : (
             <p className="text-white font-mono text-sm">—</p>
           )}
-        </div>
-        <div className="bg-clear-card border border-clear-border rounded-xl p-4">
-          <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Fee</p>
-          <p className="text-white font-mono text-sm">{fmtBps(feeBps)}</p>
         </div>
         <div className="bg-clear-card border border-clear-border rounded-xl p-4">
           <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Configured Tokens</p>
@@ -208,20 +205,18 @@ export function RebalanceAgent() {
                 <tr className="text-slate-400 text-xs uppercase tracking-wider">
                   <th className="py-2 text-left">Token</th>
                   <th className="py-2 text-right">Balance</th>
-                  <th className="py-2 text-right">Price</th>
                   <th className="py-2 text-right">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {tokenAddresses.map((addr, i) => {
-                  const info = TOKEN_BY_ADDRESS[addr.toLowerCase()]
+                  const info = getTokenByAddress(addr, chainId)
                   const symbol = info?.symbol ?? shortAddr(addr)
                   const detail = tokenDetailsData?.[i]?.result as
-                    | [boolean, number, bigint]
+                    | [boolean, number]
                     | undefined
                   const enabled = detail?.[0]
                   const decimals = detail?.[1] ?? (info?.decimals ?? 18)
-                  const price = detail?.[2]
                   const amount = tokenAmounts[i] ?? 0n
 
                   return (
@@ -239,9 +234,6 @@ export function RebalanceAgent() {
                       </td>
                       <td className="py-3 text-right font-mono text-white">
                         {fmtTokenAmount(amount, Number(decimals))}
-                      </td>
-                      <td className="py-3 text-right font-mono text-slate-300">
-                        {price !== undefined ? fmtPrice(price) : '—'}
                       </td>
                       <td className="py-3 text-right">
                         {enabled === undefined ? (
@@ -281,15 +273,17 @@ export function RebalanceAgent() {
 
       {/* Management grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ConfigureTokenCard isOwner={isOwner} />
-        <UpdateFeeCard isOwner={isOwner} currentFee={feeBps} onSuccess={refetchFee} />
+        <ConfigureTokenCard isOwner={isOwner} agentAddress={AGENT} tokenList={TOKEN_LIST} />
+        <ConfigureRouteCard isOwner={isOwner} agentAddress={AGENT} tokenList={TOKEN_LIST} />
         <LiquidityCard
           isOwner={isOwner}
           tokenAddresses={tokenAddresses}
           tokenDetailsData={tokenDetailsData}
           onSuccess={refetchBalances}
+          agentAddress={AGENT}
+          tokenList={TOKEN_LIST}
         />
-        <WhitelistCard isOwner={isOwner} />
+        <WhitelistCard isOwner={isOwner} agentAddress={AGENT} />
       </div>
     </div>
   )
@@ -297,9 +291,8 @@ export function RebalanceAgent() {
 
 // ─── ConfigureTokenCard ────────────────────────────────────────────────────
 
-function ConfigureTokenCard({ isOwner }: { isOwner: boolean }) {
-  const [tokenAddr, setTokenAddr] = useState(TOKEN_LIST[0].address)
-  const [price, setPrice] = useState('')
+function ConfigureTokenCard({ isOwner, agentAddress, tokenList }: { isOwner: boolean; agentAddress: `0x${string}`; tokenList: Array<{ address: `0x${string}`; symbol: string; decimals: number }> }) {
+  const [tokenAddr, setTokenAddr] = useState(tokenList[0].address)
   const [hash, setHash] = useState<`0x${string}` | undefined>()
   const [err, setErr] = useState<string | null>(null)
 
@@ -307,18 +300,15 @@ function ConfigureTokenCard({ isOwner }: { isOwner: boolean }) {
   const { isLoading: isPending } = useWaitForTransactionReceipt({ hash })
 
   async function handle() {
-    if (!price || isNaN(Number(price))) return
     setErr(null)
     try {
-      const priceRaw = parseUnits(price, 8)
       const h = await writeContractAsync({
-        address: AGENT,
+        address: agentAddress,
         abi: CLEAR_REBALANCE_AGENT_ABI,
         functionName: 'configureToken',
-        args: [tokenAddr as `0x${string}`, priceRaw],
+        args: [tokenAddr as `0x${string}`],
       })
       setHash(h)
-      setPrice('')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       if (!msg.includes('User rejected')) setErr(msg.slice(0, 120))
@@ -332,33 +322,20 @@ function ConfigureTokenCard({ isOwner }: { isOwner: boolean }) {
           <label className="text-xs text-slate-400 uppercase tracking-wider">Token</label>
           <select
             value={tokenAddr}
-            onChange={(e) => setTokenAddr(e.target.value)}
+            onChange={(e) => setTokenAddr(e.target.value as `0x${string}`)}
             disabled={!isOwner}
             className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
           >
-            {TOKEN_LIST.map((t) => (
+            {tokenList.map((t) => (
               <option key={t.address} value={t.address}>
                 {t.symbol} — {shortAddr(t.address)}
               </option>
             ))}
           </select>
         </div>
-        <div className="space-y-1">
-          <label className="text-xs text-slate-400 uppercase tracking-wider">
-            Price (USD, 8 decimals — e.g. 1.0000)
-          </label>
-          <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="1.0000"
-            disabled={!isOwner}
-            className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-50"
-          />
-        </div>
         <TxButton
           onClick={handle}
-          disabled={!isOwner || !price}
+          disabled={!isOwner}
           pending={isPending}
           label="Configure Token"
           pendingLabel="Configuring…"
@@ -371,78 +348,127 @@ function ConfigureTokenCard({ isOwner }: { isOwner: boolean }) {
   )
 }
 
-// ─── UpdateFeeCard ─────────────────────────────────────────────────────────
+// ─── ConfigureRouteCard ────────────────────────────────────────────────────
 
-function UpdateFeeCard({
+function ConfigureRouteCard({
   isOwner,
-  currentFee,
-  onSuccess,
+  agentAddress,
+  tokenList,
 }: {
   isOwner: boolean
-  currentFee: bigint | undefined
-  onSuccess: () => void
+  agentAddress: `0x${string}`
+  tokenList: Array<{ address: `0x${string}`; symbol: string; decimals: number }>
 }) {
-  const [bpsInput, setBpsInput] = useState('')
+  const [fromToken, setFromToken] = useState(tokenList[0].address)
+  const [toToken, setToToken] = useState(tokenList[1]?.address ?? tokenList[0].address)
+  const [rateInput, setRateInput] = useState('')
   const [hash, setHash] = useState<`0x${string}` | undefined>()
   const [err, setErr] = useState<string | null>(null)
 
   const { writeContractAsync } = useWriteContract()
-  const { isLoading: isPending, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isPending } = useWaitForTransactionReceipt({ hash })
 
-  if (isSuccess) onSuccess()
+  // Read current rate for the selected route
+  const { data: currentRate } = useReadContract({
+    address: agentAddress,
+    abi: CLEAR_REBALANCE_AGENT_ABI,
+    functionName: 'routeRates',
+    args: [fromToken, toToken],
+  })
 
   async function handle() {
-    const v = Number(bpsInput)
-    if (isNaN(v) || v < 0) return
+    const v = Number(rateInput)
+    if (isNaN(v) || v <= 0) return
     setErr(null)
     try {
       const h = await writeContractAsync({
-        address: AGENT,
+        address: agentAddress,
         abi: CLEAR_REBALANCE_AGENT_ABI,
-        functionName: 'setFeeBps',
-        args: [BigInt(v)],
+        functionName: 'configureRoute',
+        args: [fromToken, toToken, BigInt(Math.floor(v))],
       })
       setHash(h)
-      setBpsInput('')
+      setRateInput('')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       if (!msg.includes('User rejected')) setErr(msg.slice(0, 120))
     }
   }
 
+  const fromSymbol = tokenList.find((t) => t.address === fromToken)?.symbol ?? 'Token'
+  const toSymbol = tokenList.find((t) => t.address === toToken)?.symbol ?? 'Token'
+
   return (
-    <SectionCard title="Update Fee">
+    <SectionCard title="Configure Route">
       <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-slate-400 uppercase tracking-wider">From</label>
+            <select
+              value={fromToken}
+              onChange={(e) => setFromToken(e.target.value as `0x${string}`)}
+              disabled={!isOwner}
+              className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            >
+              {tokenList.map((t) => (
+                <option key={t.address} value={t.address}>
+                  {t.symbol}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-slate-400 uppercase tracking-wider">To</label>
+            <select
+              value={toToken}
+              onChange={(e) => setToToken(e.target.value as `0x${string}`)}
+              disabled={!isOwner}
+              className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            >
+              {tokenList.map((t) => (
+                <option key={t.address} value={t.address}>
+                  {t.symbol}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="text-xs text-slate-400">
-          Current fee:{' '}
+          Current rate:{' '}
           <span className="text-white font-mono">
-            {currentFee !== undefined ? `${currentFee} bps (${(Number(currentFee) / 100).toFixed(2)}%)` : '—'}
+            {currentRate !== undefined && currentRate > 0n
+              ? `${currentRate} bps (${(Number(currentRate) / 100).toFixed(2)}%)`
+              : 'Not configured'}
           </span>
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-slate-400 uppercase tracking-wider">New fee (bps)</label>
+          <label className="text-xs text-slate-400 uppercase tracking-wider">
+            Rate (basis points, 10000 = 100%)
+          </label>
           <input
             type="number"
-            value={bpsInput}
-            onChange={(e) => setBpsInput(e.target.value)}
-            placeholder="e.g. 30"
-            min="0"
+            value={rateInput}
+            onChange={(e) => setRateInput(e.target.value)}
+            placeholder="e.g. 10000 for 1:1"
+            min="1"
             disabled={!isOwner}
             className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-50"
           />
-          {bpsInput && !isNaN(Number(bpsInput)) && (
-            <p className="text-slate-500 text-xs">= {(Number(bpsInput) / 100).toFixed(2)}%</p>
+          {rateInput && !isNaN(Number(rateInput)) && (
+            <p className="text-slate-500 text-xs">
+              1 {fromSymbol} → {(Number(rateInput) / 10000).toFixed(4)} {toSymbol}
+            </p>
           )}
         </div>
         <TxButton
           onClick={handle}
-          disabled={!isOwner || !bpsInput}
+          disabled={!isOwner || !rateInput || Number(rateInput) <= 0}
           pending={isPending}
-          label="Set Fee"
+          label="Set Route Rate"
           pendingLabel="Setting…"
           variant="amber"
         />
-        <TxStatus hash={hash} successMsg="Fee updated." />
+        <TxStatus hash={hash} successMsg="Route configured." />
         <InlineError msg={err} />
       </div>
     </SectionCard>
@@ -456,15 +482,19 @@ function LiquidityCard({
   tokenAddresses,
   tokenDetailsData,
   onSuccess,
+  agentAddress,
+  tokenList,
 }: {
   isOwner: boolean
   tokenAddresses: readonly `0x${string}`[]
   tokenDetailsData: any[] | undefined
   onSuccess: () => void
+  agentAddress: `0x${string}`
+  tokenList: Array<{ address: `0x${string}`; symbol: string; decimals: number }>
 }) {
   const { address: userAddress } = useAccount()
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit')
-  const [selectedToken, setSelectedToken] = useState(TOKEN_LIST[0])
+  const [selectedToken, setSelectedToken] = useState(tokenList[0])
   const [amount, setAmount] = useState('')
   const [approvalHash, setApprovalHash] = useState<`0x${string}` | undefined>()
   const [hash, setHash] = useState<`0x${string}` | undefined>()
@@ -476,7 +506,7 @@ function LiquidityCard({
     address: selectedToken.address,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: [userAddress!, AGENT],
+    args: [userAddress!, agentAddress],
     query: { enabled: !!userAddress && mode === 'deposit' },
   })
 
@@ -509,7 +539,7 @@ function LiquidityCard({
         address: selectedToken.address,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [AGENT, maxUint256],
+        args: [agentAddress, maxUint256],
       })
       setApprovalHash(h)
       await refetchAllowance()
@@ -524,7 +554,7 @@ function LiquidityCard({
     try {
       const fn = mode === 'deposit' ? 'depositLiquidity' : 'withdrawLiquidity'
       const h = await writeContractAsync({
-        address: AGENT,
+        address: agentAddress,
         abi: CLEAR_REBALANCE_AGENT_ABI,
         functionName: fn,
         args: [selectedToken.address, parsedAmount],
@@ -536,14 +566,6 @@ function LiquidityCard({
       if (!msg.includes('User rejected')) setErr(msg.slice(0, 120))
     }
   }
-
-  // Agent balance for selected token
-  const agentTokenIndex = tokenAddresses.findIndex(
-    (a) => a.toLowerCase() === selectedToken.address.toLowerCase()
-  )
-  const agentBalance = agentTokenIndex >= 0
-    ? ((tokenDetailsData?.[agentTokenIndex]?.result as [boolean, number, bigint] | undefined)?.[2] ?? undefined)
-    : undefined
 
   return (
     <SectionCard title="Liquidity Management">
@@ -570,11 +592,11 @@ function LiquidityCard({
           <label className="text-xs text-slate-400 uppercase tracking-wider">Token</label>
           <select
             value={selectedToken.address}
-            onChange={(e) => setSelectedToken(TOKEN_LIST.find((t) => t.address === e.target.value)!)}
+            onChange={(e) => setSelectedToken(tokenList.find((t) => t.address === e.target.value)!)}
             disabled={!isOwner}
             className="w-full bg-slate-800 border border-clear-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
           >
-            {TOKEN_LIST.map((t) => (
+            {tokenList.map((t) => (
               <option key={t.address} value={t.address}>
                 {t.symbol}
               </option>
@@ -653,7 +675,7 @@ function LiquidityCard({
 
 // ─── WhitelistCard ─────────────────────────────────────────────────────────
 
-function WhitelistCard({ isOwner }: { isOwner: boolean }) {
+function WhitelistCard({ isOwner, agentAddress }: { isOwner: boolean; agentAddress: `0x${string}` }) {
   const [checkAddr, setCheckAddr] = useState('')
   const [addAddr, setAddAddr] = useState('')
   const [removeAddr, setRemoveAddr] = useState('')
@@ -669,7 +691,7 @@ function WhitelistCard({ isOwner }: { isOwner: boolean }) {
   const validCheckAddr = isAddress(checkAddr)
 
   const { data: isWhitelisted } = useReadContract({
-    address: AGENT,
+    address: agentAddress,
     abi: CLEAR_REBALANCE_AGENT_ABI,
     functionName: 'whitelistedSwappers',
     args: [checkAddr as `0x${string}`],
@@ -681,7 +703,7 @@ function WhitelistCard({ isOwner }: { isOwner: boolean }) {
     setAddErr(null)
     try {
       const h = await writeContractAsync({
-        address: AGENT,
+        address: agentAddress,
         abi: CLEAR_REBALANCE_AGENT_ABI,
         functionName: 'addSwapperToWhitelist',
         args: [addAddr as `0x${string}`],
@@ -699,7 +721,7 @@ function WhitelistCard({ isOwner }: { isOwner: boolean }) {
     setRemoveErr(null)
     try {
       const h = await writeContractAsync({
-        address: AGENT,
+        address: agentAddress,
         abi: CLEAR_REBALANCE_AGENT_ABI,
         functionName: 'removeSwapperFromWhitelist',
         args: [removeAddr as `0x${string}`],
