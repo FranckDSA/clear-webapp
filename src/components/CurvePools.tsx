@@ -14,6 +14,7 @@ import {
   type CurvePoolData,
   type CurvePoolCoinData,
 } from '../lib/graphql'
+import { useExplorer } from '../hooks/useExplorer'
 import {
   ERC20_ABI,
   CURVE_POOL_ABI,
@@ -714,6 +715,7 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
 // ─── Pool Detail ─────────────────────────────────────────────────────────────
 
 function PoolDetail({ pool }: { pool: CurvePoolData }) {
+  const { getAddressUrl } = useExplorer()
   const [tab, setTab] = useState<ActionTab>('swap')
   const totalBalance = pool.coins.reduce((s, c) => s + Number(c.balance) / 10 ** c.decimals, 0)
   const colors = ['bg-blue-500', 'bg-purple-500', 'bg-teal-500', 'bg-orange-500', 'bg-pink-500']
@@ -742,7 +744,7 @@ function PoolDetail({ pool }: { pool: CurvePoolData }) {
             </div>
           </div>
           <a
-            href={`https://sepolia.arbiscan.io/address/${pool.address}`}
+            href={getAddressUrl(pool.address)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-slate-400 hover:text-slate-300"

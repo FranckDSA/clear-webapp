@@ -21,6 +21,7 @@ import {
   ClearOracleHistoryData,
 } from '../lib/graphql'
 import { useChainConfig } from '../hooks/useChainConfig'
+import { useExplorer } from '../hooks/useExplorer'
 
 // Oracle prices use 8 decimals (1.00 USD = 100000000)
 const ORACLE_DECIMALS = 8
@@ -278,6 +279,7 @@ function OraclePriceHistoryChart() {
 
 export function OracleUpdate() {
   const { address: userAddress } = useAccount()
+  const { getTxUrl } = useExplorer()
   const { addresses, tokens } = useChainConfig()
 
   const TOKEN_LIST = Object.values(tokens)
@@ -470,7 +472,7 @@ export function OracleUpdate() {
           <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-xl p-4 text-sm">
             <p className="text-emerald-400 font-medium">Price updated successfully!</p>
             <a
-              href={`https://sepolia.arbiscan.io/tx/${txHash}`}
+              href={getTxUrl(txHash)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-400 hover:underline text-xs font-mono mt-1 block"

@@ -8,6 +8,7 @@ import {
 } from '../config/contracts'
 import { getGraphQLClient, CLEAR_ROUTE_QUERY, ClearRouteResult } from '../lib/graphql'
 import { useChainConfig } from '../hooks/useChainConfig'
+import { useExplorer } from '../hooks/useExplorer'
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
@@ -21,6 +22,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export function Swap() {
   const { address: userAddress } = useAccount()
   const chainId = useChainId()
+  const { getTxUrl } = useExplorer()
   const { addresses, tokens } = useChainConfig()
 
   const TOKEN_LIST = Object.values(tokens)
@@ -454,7 +456,7 @@ export function Swap() {
         <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-xl p-4 text-sm">
           <p className="text-emerald-400 font-medium">Swap successful!</p>
           <a
-            href={`https://sepolia.arbiscan.io/tx/${txHash}`}
+            href={getTxUrl(txHash)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-400 hover:underline text-xs font-mono mt-1 block"

@@ -14,6 +14,7 @@ import {
   CLEAR_REBALANCE_AGENT_ABI,
 } from '../config/contracts'
 import { useChainConfig } from '../hooks/useChainConfig'
+import { useExplorer } from '../hooks/useExplorer'
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ function TxButton({
   )
 }
 
-function TxStatus({ hash, successMsg }: { hash: `0x${string}` | undefined; successMsg: string }) {
+function TxStatus({ hash, successMsg, txUrl }: { hash: `0x${string}` | undefined; successMsg: string; txUrl: string }) {
   const { isLoading, isSuccess } = useWaitForTransactionReceipt({ hash })
   if (!hash) return null
   if (isLoading) return <p className="text-slate-400 text-xs">Waiting for confirmation…</p>
@@ -83,7 +84,7 @@ function TxStatus({ hash, successMsg }: { hash: `0x${string}` | undefined; succe
       <p className="text-emerald-400 text-xs">
         {successMsg}{' '}
         <a
-          href={`https://sepolia.arbiscan.io/tx/${hash}`}
+          href={txUrl}
           target="_blank"
           rel="noreferrer"
           className="underline"
@@ -105,6 +106,7 @@ function InlineError({ msg }: { msg: string | null }) {
 export function RebalanceAgent() {
   const { address: userAddress } = useAccount()
   const chainId = useChainId()
+  const { getAddressUrl, getTxUrl } = useExplorer()
   const { addresses, tokens } = useChainConfig()
 
   const AGENT = addresses.clearRebalanceAgent
@@ -162,7 +164,7 @@ export function RebalanceAgent() {
           <p className="text-slate-400 text-sm mt-1">Manage the ClearRebalanceAgent contract</p>
         </div>
         <a
-          href={`https://sepolia.arbiscan.io/address/${AGENT}`}
+          href={getAddressUrl(AGENT)}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors"
@@ -177,7 +179,7 @@ export function RebalanceAgent() {
           <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Owner</p>
           {owner ? (
             <a
-              href={`https://sepolia.arbiscan.io/address/${owner}`}
+              href={getAddressUrl(owner)}
               target="_blank"
               rel="noreferrer"
               className="text-sm font-mono text-blue-400 hover:text-blue-300 transition-colors break-all"
@@ -292,6 +294,7 @@ export function RebalanceAgent() {
 // ─── ConfigureTokenCard ────────────────────────────────────────────────────
 
 function ConfigureTokenCard({ isOwner, agentAddress, tokenList }: { isOwner: boolean; agentAddress: `0x${string}`; tokenList: Array<{ address: `0x${string}`; symbol: string; decimals: number }> }) {
+  const { getTxUrl } = useExplorer()
   const [tokenAddr, setTokenAddr] = useState(tokenList[0].address)
   const [hash, setHash] = useState<`0x${string}` | undefined>()
   const [err, setErr] = useState<string | null>(null)
@@ -341,7 +344,7 @@ function ConfigureTokenCard({ isOwner, agentAddress, tokenList }: { isOwner: boo
           pendingLabel="Configuring…"
           variant="blue"
         />
-        <TxStatus hash={hash} successMsg="Token configured." />
+        <TxStatus hash={hash} successMsg="Token configured." txUrl={hash ? getTxUrl(hash) : ''} />
         <InlineError msg={err} />
       </div>
     </SectionCard>
@@ -359,6 +362,7 @@ function ConfigureRouteCard({
   agentAddress: `0x${string}`
   tokenList: Array<{ address: `0x${string}`; symbol: string; decimals: number }>
 }) {
+  const { getTxUrl } = useExplorer()
   const [fromToken, setFromToken] = useState(tokenList[0].address)
   const [toToken, setToToken] = useState(tokenList[1]?.address ?? tokenList[0].address)
   const [rateInput, setRateInput] = useState('')
@@ -468,7 +472,7 @@ function ConfigureRouteCard({
           pendingLabel="Setting…"
           variant="amber"
         />
-        <TxStatus hash={hash} successMsg="Route configured." />
+        <TxStatus hash={hash} successMsg="Route configured." txUrl={hash ? getTxUrl(hash) : ''} />
         <InlineError msg={err} />
       </div>
     </SectionCard>
@@ -676,6 +680,7 @@ function LiquidityCard({
 // ─── WhitelistCard ─────────────────────────────────────────────────────────
 
 function WhitelistCard({ isOwner, agentAddress }: { isOwner: boolean; agentAddress: `0x${string}` }) {
+  const { getTxUrl } = useExplorer()
   const [checkAddr, setCheckAddr] = useState('')
   const [addAddr, setAddAddr] = useState('')
   const [removeAddr, setRemoveAddr] = useState('')
@@ -778,7 +783,7 @@ function WhitelistCard({ isOwner, agentAddress }: { isOwner: boolean; agentAddre
                 variant="emerald"
               />
             </div>
-            <TxStatus hash={addHash} successMsg="Swapper added." />
+            <TxStatus hash={addHash} successMsg="Swapper added." txUrl={addHash ? getTxUrl(addHash) : ''} />
             <InlineError msg={addErr} />
           </div>
 
@@ -803,7 +808,7 @@ function WhitelistCard({ isOwner, agentAddress }: { isOwner: boolean; agentAddre
                 variant="red"
               />
             </div>
-            <TxStatus hash={removeHash} successMsg="Swapper removed." />
+            <TxStatus hash={removeHash} successMsg="Swapper removed." txUrl={removeHash ? getTxUrl(removeHash) : ''} />
             <InlineError msg={removeErr} />
           </div>
         </div>

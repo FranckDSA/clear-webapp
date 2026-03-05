@@ -19,8 +19,8 @@ export type ChainConfig = {
 const MAINNET_CONFIG: ChainConfig = {
   addresses: {
     clearFactory: '0x78aba0729345219B8Ec4D5c9c19D23186E0803fB',
-    clearOracle: '0x1eE149bd53B4193987109f604A1715CBA861d3a3',
-    clearSwap: '0x07656EA4898760d55feA211015df247b44B9D81b',
+    clearOracle: '0xFb31c9Fe8d2D02AC04379ab2Cc6e840ede2e613C',
+    clearSwap: '0x35e22BcC2c60c8a721cb36cE47ad562860A2D9CB',
     clearAccessManager: '0x02792c6E39A4F338283e9B6152e2182F9E2153b3',
     defaultVault: '0xc4E625Bc9B15F568b2685922fb8e46a7522c4910', // TODO: Update with actual vault
     clearRebalanceAgent: '0xfd86FAEF607A67ED68F7C29042E022196f21DE10',
@@ -58,8 +58,8 @@ const MAINNET_CONFIG: ChainConfig = {
 const ARBITRUM_SEPOLIA_CONFIG: ChainConfig = {
   addresses: {
     clearFactory: '0x9e422482f0ffC1f0b98f94db79bC771B184fD71A',
-    clearOracle: '0x81Ff66eEf8516C44187B47C6a497b248eA74213D',
-    clearSwap: '0x745dbbA17916112DB6c5289863073705A3644db1',
+    clearOracle: '0x11e51A3194dA1649EF5A6cfF7EF2b8B29B095915',
+    clearSwap: '0xC305c7717fD3B5aa5375BF5780B80B10C2Ec4F6d',
     clearAccessManager: '0x665a87D3FE39e2B5Aa8667747E23871d124D3785',
     defaultVault: '0x02912591442Beb7Fd824Df4c90006093371898EF',
     clearRebalanceAgent: '0x615486797034Cf4bd6cC56F8cfd530A02c5ac35e',

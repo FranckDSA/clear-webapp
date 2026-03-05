@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { parseUnits, formatUnits, type Address } from 'viem'
 import { TOKENS, ERC20_ABI } from '../config/contracts'
+import { useExplorer } from '../hooks/useExplorer'
 
 const TOKEN_LIST = Object.values(TOKENS)
 
@@ -32,6 +33,7 @@ function TokenMintCard({
   onMintSuccess: () => void
 }) {
   const { address: userAddress } = useAccount()
+  const { getTxUrl } = useExplorer()
   const [amount, setAmount] = useState('')
   const [mintState, setMintState] = useState<MintState>('idle')
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
@@ -177,7 +179,7 @@ function TokenMintCard({
           <span>Mint successful!</span>
           {txHash && (
             <a
-              href={`https://sepolia.arbiscan.io/tx/${txHash}`}
+              href={getTxUrl(txHash)}
               target="_blank"
               rel="noopener noreferrer"
               className="ml-auto underline hover:text-emerald-300"

@@ -26,6 +26,7 @@ import {
   toUSDNumber,
   formatDay,
 } from '../lib/graphql'
+import { useExplorer } from '../hooks/useExplorer'
 
 interface GlobalStatsResponse {
   clearStats: ClearStatsData[]
@@ -177,6 +178,7 @@ function tokenBalance(balance: string, decimals: string): string {
 
 export function Stats() {
   const chainId = useChainId()
+  const { getAddressUrl } = useExplorer()
   const { data: globalStats, isLoading: globalLoading, error: globalError } = useGlobalStats(chainId)
   const { data: vaultDailyStats, isLoading: vaultLoading } = useVaultDailyStats(chainId)
   const { data: vaults, isLoading: vaultsLoading } = useVaults(chainId)
@@ -410,7 +412,7 @@ export function Stats() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400 font-mono">Vault</span>
                         <a
-                          href={`https://sepolia.arbiscan.io/address/${vault.address}`}
+                          href={getAddressUrl(vault.address)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-400 text-xs font-mono hover:text-blue-300 transition-colors"

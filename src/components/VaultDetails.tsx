@@ -9,6 +9,7 @@ import {
   getTokenByAddress,
 } from '../config/contracts'
 import { useChainConfig } from '../hooks/useChainConfig'
+import { useExplorer } from '../hooks/useExplorer'
 
 interface TokenDetails {
     addr: `0x${string}`;
@@ -119,6 +120,7 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 function RedeemIOUPanel({ vault, tokens, clearSwapAddress, chainId }: { vault: `0x${string}`; tokens: TokenDetails[]; clearSwapAddress: `0x${string}`; chainId: number }) {
   const { address: userAddress } = useAccount()
+  const { getTxUrl } = useExplorer()
 
   const redeemableTokens = tokens.filter(
     (t) => t.iou && t.iou !== ZERO_ADDRESS
@@ -372,7 +374,7 @@ function RedeemIOUPanel({ vault, tokens, clearSwapAddress, chainId }: { vault: `
                   <p className="text-emerald-400 text-xs">
                     Approval confirmed.{' '}
                     <a
-                      href={`https://sepolia.arbiscan.io/tx/${approvalHash}`}
+                      href={getTxUrl(approvalHash)}
                       target="_blank"
                       rel="noreferrer"
                       className="underline"
@@ -385,7 +387,7 @@ function RedeemIOUPanel({ vault, tokens, clearSwapAddress, chainId }: { vault: `
                   <p className="text-emerald-400 text-xs">
                     IOU redeemed successfully.{' '}
                     <a
-                      href={`https://sepolia.arbiscan.io/tx/${redeemHash}`}
+                      href={getTxUrl(redeemHash)}
                       target="_blank"
                       rel="noreferrer"
                       className="underline"

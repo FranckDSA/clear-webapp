@@ -76,7 +76,7 @@ function MyComponent() {
 
 3. **GraphQL Endpoints**:
    - Arbitrum Sepolia: `https://api-arb-sepolia-clear.trevee.xyz/graphql`
-   - Ethereum Mainnet: `https://api-mainnet-clear.trevee.xyz/graphql` (à configurer)
+   - Ethereum Mainnet: `https://api-eth-mainnet-clear.trevee.xyz/graphql` (à configurer)
 
 4. **Explorer Links**: Détection automatique:
    - Ethereum: etherscan.io
