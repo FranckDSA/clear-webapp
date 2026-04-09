@@ -7,6 +7,7 @@ import '@rainbow-me/rainbowkit/styles.css'
 import './index.css'
 import { App } from './App'
 import { config } from './config/wagmi'
+import { VaultProvider } from './contexts/VaultContext'
 
 const queryClient = new QueryClient()
 
@@ -21,7 +22,9 @@ createRoot(document.getElementById('root')!).render(
             borderRadius: 'large',
           })}
         >
-          <App />
+          <VaultProvider>
+            <App />
+          </VaultProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

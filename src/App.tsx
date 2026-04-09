@@ -9,6 +9,7 @@ import { CurvePools } from './components/CurvePools'
 import { Mint } from './components/Mint'
 import { RebalanceAgent } from './components/RebalanceAgent'
 import { useChainConfig } from './hooks/useChainConfig'
+import { useVaultContext } from './contexts/VaultContext'
 
 type Tab = 'home' | 'vault' | 'swap' | 'pools' | 'oracle' | 'mint' | 'agent'
 
@@ -17,6 +18,7 @@ export function App() {
   const chainId = useChainId()
   const chains = useChains()
   const { addresses } = useChainConfig()
+  const { vaults, selectedVaultAddress, setSelectedVaultAddress, isLoading: vaultsLoading } = useVaultContext()
 
   const currentChain = chains.find(c => c.id === chainId)
   const chainName = currentChain?.name || 'Unknown Network'
@@ -144,6 +146,28 @@ export function App() {
               </button>
             ))}
           </nav>
+
+          {/* Vault Selector */}
+          <div className="hidden sm:flex items-center">
+            <select
+              value={selectedVaultAddress || ''}
+              onChange={(e) => setSelectedVaultAddress(e.target.value || null)}
+              disabled={vaultsLoading || vaults.length === 0}
+              className="bg-slate-800 border border-clear-border text-slate-200 text-sm rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-w-[180px]"
+            >
+              {vaultsLoading ? (
+                <option value="">Loading vaults...</option>
+              ) : vaults.length === 0 ? (
+                <option value="">No vaults found</option>
+              ) : (
+                vaults.map((vault) => (
+                  <option key={vault.address} value={vault.address}>
+                    {vault.address.slice(0, 6)}...{vault.address.slice(-4)}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
 
           {/* Wallet */}
           <div className="flex-shrink-0">

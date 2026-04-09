@@ -497,6 +497,7 @@ function LiquidityCard({
   tokenList: Array<{ address: `0x${string}`; symbol: string; decimals: number }>
 }) {
   const { address: userAddress } = useAccount()
+  const { getTxUrl } = useExplorer()
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit')
   const [selectedToken, setSelectedToken] = useState(tokenList[0])
   const [amount, setAmount] = useState('')
@@ -670,6 +671,7 @@ function LiquidityCard({
         <TxStatus
           hash={hash}
           successMsg={mode === 'deposit' ? 'Liquidity deposited.' : 'Liquidity withdrawn.'}
+          txUrl={hash ? getTxUrl(hash) : ''}
         />
         <InlineError msg={err} />
       </div>

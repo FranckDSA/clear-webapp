@@ -19,8 +19,22 @@ import {
   ERC20_ABI,
   CURVE_POOL_ABI,
   CURVE_POOL_2COIN_ABI,
+  CURVE_POOL_3COIN_ABI,
+  CURVE_POOL_4COIN_ABI,
   CURVE_POOL_5COIN_ABI,
 } from '../config/contracts'
+import { useVaultContext } from '../contexts/VaultContext'
+
+// Helper to get the correct ABI based on number of coins
+function getCurvePoolAbi(nCoins: number) {
+  switch (nCoins) {
+    case 2: return CURVE_POOL_2COIN_ABI
+    case 3: return CURVE_POOL_3COIN_ABI
+    case 4: return CURVE_POOL_4COIN_ABI
+    case 5: return CURVE_POOL_5COIN_ABI
+    default: return CURVE_POOL_5COIN_ABI
+  }
+}
 
 type ActionTab = 'swap' | 'deposit' | 'withdraw'
 
@@ -370,16 +384,25 @@ function DepositPanel({ pool }: { pool: CurvePoolData }) {
     try { return parseUnits(a || '0', pool.coins[i].decimals) } catch { return 0n }
   })
 
-  const addLiqAbi = nCoins === 2 ? CURVE_POOL_2COIN_ABI : CURVE_POOL_5COIN_ABI
+  const poolAbi = getCurvePoolAbi(nCoins)
+
+  // Build the amounts array based on number of coins
+  const getAmountsArray = () => {
+    switch (nCoins) {
+      case 2: return [amountsBig[0], amountsBig[1]] as const
+      case 3: return [amountsBig[0], amountsBig[1], amountsBig[2]] as const
+      case 4: return [amountsBig[0], amountsBig[1], amountsBig[2], amountsBig[3]] as const
+      case 5: return [amountsBig[0], amountsBig[1], amountsBig[2], amountsBig[3], amountsBig[4]] as const
+      default: return [amountsBig[0], amountsBig[1], amountsBig[2], amountsBig[3], amountsBig[4]] as const
+    }
+  }
 
   // Preview LP out
   const { data: previewLP } = useReadContract({
     address: pool.address as Address,
-    abi: addLiqAbi,
+    abi: poolAbi,
     functionName: 'calc_token_amount',
-    args: nCoins === 2
-      ? [[amountsBig[0], amountsBig[1]], true]
-      : [[amountsBig[0], amountsBig[1], amountsBig[2], amountsBig[3], amountsBig[4]], true],
+    args: [getAmountsArray(), true],
     query: { enabled: amountsBig.some((a) => a > 0n) },
   } as Parameters<typeof useReadContract>[0])
 
@@ -445,27 +468,15 @@ function DepositPanel({ pool }: { pool: CurvePoolData }) {
   }
 
   const handleDeposit = () => {
-    if (nCoins === 2) {
-      writeContract(
-        {
-          address: pool.address as Address,
-          abi: CURVE_POOL_2COIN_ABI,
-          functionName: 'add_liquidity',
-          args: [[amountsBig[0], amountsBig[1]], minLP],
-        },
-        { onSuccess: (hash) => setTxHash(hash) }
-      )
-    } else {
-      writeContract(
-        {
-          address: pool.address as Address,
-          abi: CURVE_POOL_5COIN_ABI,
-          functionName: 'add_liquidity',
-          args: [[amountsBig[0], amountsBig[1], amountsBig[2], amountsBig[3], amountsBig[4]], minLP],
-        },
-        { onSuccess: (hash) => setTxHash(hash) }
-      )
-    }
+    writeContract(
+      {
+        address: pool.address as Address,
+        abi: poolAbi,
+        functionName: 'add_liquidity',
+        args: [getAmountsArray(), minLP],
+      } as Parameters<typeof writeContract>[0],
+      { onSuccess: (hash) => setTxHash(hash) }
+    )
   }
 
   const isLoading = isWritePending || isTxPending
@@ -545,10 +556,14 @@ function DepositPanel({ pool }: { pool: CurvePoolData }) {
 
 // ─── Withdraw Panel ──────────────────────────────────────────────────────────
 
+type WithdrawMode = 'single' | 'balanced'
+
 function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
   const { address } = useAccount()
+  const nCoins = pool.coins.length
   const [lpAmount, setLpAmount] = useState('')
   const [withdrawIdx, setWithdrawIdx] = useState(0)
+  const [withdrawMode, setWithdrawMode] = useState<WithdrawMode>('single')
   const [txHash, setTxHash] = useState<Address | undefined>()
 
   // We need the LP token address - for Curve, try lp_token() then token()
@@ -565,7 +580,7 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
     : 0n
 
   // User LP balance
-  const { data: lpBalance } = useReadContract({
+  const { data: lpBalance, refetch: refetchLpBalance } = useReadContract({
     address: lpToken,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -582,14 +597,42 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
     query: { enabled: !!address },
   })
 
-  // Preview withdraw one coin
+  // LP total supply (for calculating proportional amounts)
+  const { data: lpTotalSupply } = useReadContract({
+    address: lpToken,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [pool.address as Address], // Total LP is held by the pool for meta pools, or use totalSupply
+    query: { enabled: withdrawMode === 'balanced' },
+  })
+
+  // Get total supply of LP token for calculating proportional withdrawal
+  const { data: lpSupply } = useReadContract({
+    address: lpToken,
+    abi: [{ name: 'totalSupply', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] }] as const,
+    functionName: 'totalSupply',
+    query: { enabled: withdrawMode === 'balanced' },
+  })
+
+  // Preview withdraw one coin (for single mode)
   const { data: previewOut } = useReadContract({
     address: pool.address as Address,
     abi: CURVE_POOL_ABI,
     functionName: 'calc_withdraw_one_coin',
     args: [lpAmountBig, BigInt(withdrawIdx)],
-    query: { enabled: lpAmountBig > 0n },
+    query: { enabled: lpAmountBig > 0n && withdrawMode === 'single' },
   })
+
+  // Calculate proportional amounts for balanced withdrawal
+  const balancedAmounts = pool.coins.map((coin) => {
+    if (!lpSupply || lpAmountBig === 0n) return 0n
+    const poolBalance = BigInt(coin.balance)
+    // proportional = (lpAmount / totalSupply) * poolBalance
+    return (lpAmountBig * poolBalance) / lpSupply
+  })
+
+  // Apply 1% slippage to min amounts
+  const minBalancedAmounts = balancedAmounts.map((amt) => (amt * 99n) / 100n)
 
   const minOut = previewOut ? (previewOut * 99n) / 100n : 0n
   const needsApproval = lpAllowance !== undefined && lpAmountBig > 0n && lpAllowance < lpAmountBig
@@ -602,8 +645,9 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
       setLpAmount('')
       setTxHash(undefined)
       refetchLpAllowance()
+      refetchLpBalance()
     }
-  }, [isTxSuccess, refetchLpAllowance])
+  }, [isTxSuccess, refetchLpAllowance, refetchLpBalance])
 
   const handleApprove = () => {
     writeContract(
@@ -618,21 +662,72 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
   }
 
   const handleWithdraw = () => {
-    writeContract(
-      {
-        address: pool.address as Address,
-        abi: CURVE_POOL_ABI,
-        functionName: 'remove_liquidity_one_coin',
-        args: [lpAmountBig, BigInt(withdrawIdx), minOut],
-      },
-      { onSuccess: (hash) => setTxHash(hash) }
-    )
+    if (withdrawMode === 'single') {
+      writeContract(
+        {
+          address: pool.address as Address,
+          abi: CURVE_POOL_ABI,
+          functionName: 'remove_liquidity_one_coin',
+          args: [lpAmountBig, BigInt(withdrawIdx), minOut],
+        },
+        { onSuccess: (hash) => setTxHash(hash) }
+      )
+    } else {
+      // Balanced withdrawal - remove_liquidity
+      const poolAbi = getCurvePoolAbi(nCoins)
+
+      // Build min amounts array based on number of coins
+      const getMinAmountsArray = () => {
+        switch (nCoins) {
+          case 2: return [minBalancedAmounts[0], minBalancedAmounts[1]] as const
+          case 3: return [minBalancedAmounts[0], minBalancedAmounts[1], minBalancedAmounts[2]] as const
+          case 4: return [minBalancedAmounts[0], minBalancedAmounts[1], minBalancedAmounts[2], minBalancedAmounts[3]] as const
+          case 5: return [minBalancedAmounts[0], minBalancedAmounts[1], minBalancedAmounts[2], minBalancedAmounts[3], minBalancedAmounts[4]] as const
+          default: return [minBalancedAmounts[0], minBalancedAmounts[1], minBalancedAmounts[2], minBalancedAmounts[3], minBalancedAmounts[4]] as const
+        }
+      }
+
+      writeContract(
+        {
+          address: pool.address as Address,
+          abi: poolAbi,
+          functionName: 'remove_liquidity',
+          args: [lpAmountBig, getMinAmountsArray()],
+        } as Parameters<typeof writeContract>[0],
+        { onSuccess: (hash) => setTxHash(hash) }
+      )
+    }
   }
 
   const isLoading = isWritePending || isTxPending
+  const colors = ['text-blue-400', 'text-purple-400', 'text-teal-400', 'text-orange-400', 'text-pink-400']
 
   return (
     <div className="space-y-4">
+      {/* Withdraw Mode Toggle */}
+      <div className="flex gap-1 p-1 bg-slate-800/80 rounded-lg">
+        <button
+          onClick={() => setWithdrawMode('single')}
+          className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${
+            withdrawMode === 'single'
+              ? 'bg-slate-700 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Single Token
+        </button>
+        <button
+          onClick={() => setWithdrawMode('balanced')}
+          className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${
+            withdrawMode === 'balanced'
+              ? 'bg-slate-700 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          All Tokens (Balanced)
+        </button>
+      </div>
+
       {/* LP Amount */}
       <div className="bg-slate-800/60 rounded-xl p-4 border border-clear-border">
         <div className="flex items-center justify-between mb-2">
@@ -655,33 +750,73 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
         />
       </div>
 
-      {/* Receive token */}
-      <div className="bg-slate-800/60 rounded-xl p-4 border border-clear-border">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-slate-400">Receive token</span>
-        </div>
-        <div className="flex gap-3 items-center">
-          <div className="flex-1 text-xl font-medium text-slate-300">
-            {previewOut !== undefined && lpAmountBig > 0n
-              ? formatAmount(previewOut.toString(), pool.coins[withdrawIdx].decimals, 6)
-              : '—'}
+      {/* Single Token Mode */}
+      {withdrawMode === 'single' && (
+        <div className="bg-slate-800/60 rounded-xl p-4 border border-clear-border">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400">Receive token</span>
           </div>
-          <select
-            value={withdrawIdx}
-            onChange={(e) => setWithdrawIdx(Number(e.target.value))}
-            className="bg-slate-700 border border-clear-border rounded-lg px-3 py-1.5 text-sm text-white outline-none cursor-pointer"
-          >
-            {pool.coins.map((coin, i) => (
-              <option key={i} value={i}>{coin.symbol}</option>
-            ))}
-          </select>
+          <div className="flex gap-3 items-center">
+            <div className="flex-1 text-xl font-medium text-slate-300">
+              {previewOut !== undefined && lpAmountBig > 0n
+                ? formatAmount(previewOut.toString(), pool.coins[withdrawIdx].decimals, 6)
+                : '—'}
+            </div>
+            <select
+              value={withdrawIdx}
+              onChange={(e) => setWithdrawIdx(Number(e.target.value))}
+              className="bg-slate-700 border border-clear-border rounded-lg px-3 py-1.5 text-sm text-white outline-none cursor-pointer"
+            >
+              {pool.coins.map((coin, i) => (
+                <option key={i} value={i}>{coin.symbol}</option>
+              ))}
+            </select>
+          </div>
+          {previewOut !== undefined && lpAmountBig > 0n && (
+            <p className="text-xs text-slate-500 mt-2">
+              Min received: {formatAmount(minOut.toString(), pool.coins[withdrawIdx].decimals, 6)} {pool.coins[withdrawIdx].symbol}
+            </p>
+          )}
         </div>
-        {previewOut !== undefined && lpAmountBig > 0n && (
-          <p className="text-xs text-slate-500 mt-2">
-            Min received: {formatAmount(minOut.toString(), pool.coins[withdrawIdx].decimals, 6)} {pool.coins[withdrawIdx].symbol}
+      )}
+
+      {/* Balanced Mode - Show all tokens */}
+      {withdrawMode === 'balanced' && (
+        <div className="bg-slate-800/60 rounded-xl p-4 border border-clear-border">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-slate-400">You will receive (estimated)</span>
+          </div>
+          <div className="space-y-3">
+            {pool.coins.map((coin, i) => {
+              const estimatedAmount = balancedAmounts[i]
+              const minAmount = minBalancedAmounts[i]
+              return (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-slate-700/50 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${colors[i % colors.length].replace('text-', 'bg-')}`} />
+                    <span className="text-sm font-medium text-slate-300">{coin.symbol}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-sm font-medium ${colors[i % colors.length]}`}>
+                      {lpAmountBig > 0n
+                        ? formatAmount(estimatedAmount.toString(), coin.decimals, 6)
+                        : '—'}
+                    </p>
+                    {lpAmountBig > 0n && (
+                      <p className="text-xs text-slate-500">
+                        min: {formatAmount(minAmount.toString(), coin.decimals, 4)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-xs text-slate-500 mt-3">
+            Balanced withdrawal removes liquidity proportionally from all tokens
           </p>
-        )}
-      </div>
+        </div>
+      )}
 
       {isTxSuccess && (
         <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
@@ -705,7 +840,7 @@ function WithdrawPanel({ pool }: { pool: CurvePoolData }) {
           disabled={isLoading || !lpAmount || lpAmountBig === 0n}
           className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm transition-colors"
         >
-          {isLoading ? 'Withdrawing…' : 'Remove Liquidity'}
+          {isLoading ? 'Withdrawing…' : withdrawMode === 'single' ? 'Remove Liquidity' : 'Remove All Tokens'}
         </button>
       )}
     </div>
@@ -896,6 +1031,7 @@ function PoolDetail({ pool }: { pool: CurvePoolData }) {
 export function CurvePools() {
   const chainId = useChainId()
   const [selectedPool, setSelectedPool] = useState<string | null>(null)
+  const { selectedVaultAddress } = useVaultContext()
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['curvePools', chainId],
@@ -906,15 +1042,20 @@ export function CurvePools() {
     refetchInterval: 30_000,
   })
 
-  const pools = data ?? []
+  // Filter pools by selected vault
+  const allPools = data ?? []
+  const pools = selectedVaultAddress
+    ? allPools.filter((p) => p.vault?.address?.toLowerCase() === selectedVaultAddress.toLowerCase())
+    : allPools
+
   const selected = pools.find((p) => p.id === selectedPool) ?? pools[0] ?? null
 
-  // Auto-select first pool
+  // Auto-select first pool when pools change
   useEffect(() => {
-    if (pools.length > 0 && !selectedPool) {
+    if (pools.length > 0 && (!selectedPool || !pools.find((p) => p.id === selectedPool))) {
       setSelectedPool(pools[0].id)
     }
-  }, [pools])
+  }, [pools, selectedPool])
 
   if (isLoading) {
     return (
@@ -938,6 +1079,11 @@ export function CurvePools() {
         <h1 className="text-2xl font-bold text-white">Curve Pools</h1>
         <p className="text-sm text-slate-400 mt-1">
           Stableswap liquidity pools — deposit, withdraw and swap stablecoins
+          {selectedVaultAddress && (
+            <span className="ml-2 text-blue-400">
+              (Vault: {selectedVaultAddress.slice(0, 6)}...{selectedVaultAddress.slice(-4)})
+            </span>
+          )}
         </p>
       </div>
 

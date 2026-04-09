@@ -1079,9 +1079,77 @@ export const CURVE_POOL_2COIN_ABI = [
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'amount', type: 'uint256' },
-      { name: 'min_amounts', type: 'uint256[2]' },
+      { name: 'min_amounts', type: 'uint256[]' },
     ],
-    outputs: [{ name: '', type: 'uint256[2]' }],
+    outputs: [{ name: '', type: 'uint256[]' }],
+  },
+] as const
+
+// 3-coin Curve pool add_liquidity
+export const CURVE_POOL_3COIN_ABI = [
+  {
+    name: 'add_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amounts', type: 'uint256[3]' },
+      { name: 'min_mint_amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'calc_token_amount',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amounts', type: 'uint256[3]' },
+      { name: 'is_deposit', type: 'bool' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'remove_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'min_amounts', type: 'uint256[]' },
+    ],
+    outputs: [{ name: '', type: 'uint256[]' }],
+  },
+] as const
+
+// 4-coin Curve pool add_liquidity
+export const CURVE_POOL_4COIN_ABI = [
+  {
+    name: 'add_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amounts', type: 'uint256[4]' },
+      { name: 'min_mint_amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'calc_token_amount',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amounts', type: 'uint256[4]' },
+      { name: 'is_deposit', type: 'bool' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'remove_liquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'min_amounts', type: 'uint256[]' },
+    ],
+    outputs: [{ name: '', type: 'uint256[]' }],
   },
 ] as const
 
@@ -1113,9 +1181,9 @@ export const CURVE_POOL_5COIN_ABI = [
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'amount', type: 'uint256' },
-      { name: 'min_amounts', type: 'uint256[5]' },
+      { name: 'min_amounts', type: 'uint256[]' },
     ],
-    outputs: [{ name: '', type: 'uint256[5]' }],
+    outputs: [{ name: '', type: 'uint256[]' }],
   },
 ] as const
 
